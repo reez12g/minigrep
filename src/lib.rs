@@ -8,7 +8,24 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let mut contents = String::new();
     f.read_to_string(&mut contents)?;
 
+    for line in search(&config.query, &contents) {
+        println!("{}", line);
+    }
+
     Ok(())
+}
+
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str>{
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.contains(query) {
+            results.push(line);
+
+        }
+    }
+
+    results
 }
 
 pub struct Config {
@@ -25,5 +42,23 @@ impl Config {
         let filename = args[2].clone();
 
         Ok(Config { query, filename })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn one_result() {
+        let query = "duct";
+        let content = "\
+Rust:
+safe, fast, productive.
+Pick three.";
+        assert_eq!(
+            vec!["safe, fast, productive."],
+            search(query, content)
+        );
     }
 }
