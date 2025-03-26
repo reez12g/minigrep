@@ -1,101 +1,89 @@
 use std::error::Error;
-use std::fs::File;
-use std::io::prelude::*;
-use std::env;
 
+pub mod config;
+pub mod search;
+pub mod file;
+
+use config::Config;
+
+/// Runs the minigrep application with the given configuration
+///
+/// # Arguments
+///
+/// * `config` - The application configuration
+///
+/// # Returns
+///
+/// * `Result<(), Box<dyn Error>>` - Ok if successful, Err otherwise
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let mut f = File::open(config.filename)?;
+    // Read the file contents
+    let contents = file::read_file(&config.filename)?;
 
-    let mut contents = String::new();
-    f.read_to_string(&mut contents)?;
-
+    // Perform the search
     let results = if config.case_sensitive {
-        search(&config.query, &contents)
+        search::search(&config.query, &contents)
     } else {
-        search_case_insensitive(&config.query, &contents)
+        search::search_case_insensitive(&config.query, &contents)
     };
 
-    for line in results {
-        println!("{}", line);
+    // Print the results
+    if results.is_empty() {
+        println!("No matches found for '{}'", config.query);
+    } else {
+        println!("Found {} match(es):", results.len());
+        for line in results {
+            println!("{}", line);
+        }
     }
 
     Ok(())
 }
 
-pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str>{
-    contents.lines()
-            .filter(|line| line.contains(query))
-            .collect()
-}
-
-pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str>{
-    let query = query.to_lowercase();
-    let mut results = Vec::new();
-
-    for line in contents.lines() {
-        if line.to_lowercase().contains(&query) {
-            results.push(line)
-        }
-    }
-
-    results
-}
-
-pub struct Config {
-    pub query: String,
-    pub filename: String,
-    pub case_sensitive: bool
-}
-
-impl Config {
-    pub fn new(mut args: std::env::Args) -> Result<Config, &'static str> {
-        args.next();
-
-        let query = match args.next() {
-            Some(arg) => arg,
-            None => return Err("Didn't get a query string"),
-        };
-        let filename = match args.next() {
-            Some(arg) => arg,
-            None => return Err("Didn't get a file name"),
-        };
-
-        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
-
-        Ok(Config { query, filename, case_sensitive })
-    }
-}
-
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
+    use std::fs::File;
+    use std::io::Write;
 
     #[test]
-    fn case_sensitive() {
-        let query = "duct";
-        let content = "\
-Rust:
-safe, fast, productive.
-Pick three.
-Duct tape.";
-        assert_eq!(
-            vec!["safe, fast, productive."],
-            search(query, content)
-        );
+    fn test_run_with_matches() {
+        // Create a test file
+        let filename = "test_run_with_matches.txt";
+        let contents = "Line with test\nAnother line\nTest again";
+
+        {
+            let mut file = File::create(filename).unwrap();
+            file.write_all(contents.as_bytes()).unwrap();
+        }
+
+        // Create a config
+        let config = Config {
+            query: "test".to_string(),
+            filename: filename.to_string(),
+            case_sensitive: true,
+        };
+
+        // Run the application
+        let result = run(config);
+
+        // Clean up
+        std::fs::remove_file(filename).unwrap();
+
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn case_insensitive() {
-        let query = "rUsT";
-        let contents = "\
-Rust:
-safe, fast, productive.
-Pick three.
-Trust me.";
-        assert_eq!(
-            vec!["Rust:", "Trust me."],
-            search_case_insensitive(query, contents)
-        );
+    fn test_run_file_not_found() {
+        let config = Config {
+            query: "test".to_string(),
+            filename: "nonexistent_file.txt".to_string(),
+            case_sensitive: true,
+        };
 
+        let result = run(config);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("File not found"));
     }
 }
