@@ -147,6 +147,169 @@ pub fn search_regex_case_insensitive<'a>(pattern: &str, contents: &'a str) -> Re
     Ok(search_with(contents, |line| regex.is_match(line)))
 }
 
+/// Searches for lines containing the query and includes context lines around each match
+///
+/// # Arguments
+///
+/// * `query` - The string to search for
+/// * `contents` - The text to search in
+/// * `context_lines` - Number of lines to include before and after each match
+/// * `predicate` - A function that takes a line and returns true if it matches
+///
+/// # Returns
+///
+/// * `Vec<(usize, &str, bool)>` - A vector of tuples containing line numbers (1-indexed), lines, and a boolean indicating if the line is a match
+pub fn search_with_context<'a, F>(
+    contents: &'a str,
+    context_lines: usize,
+    predicate: F,
+) -> Vec<(usize, &'a str, bool)>
+where
+    F: Fn(&str) -> bool,
+{
+    if context_lines == 0 {
+        // If no context lines are requested, just return the matches
+        return search_with(contents, predicate)
+            .into_iter()
+            .map(|(line_num, line)| (line_num, line, true))
+            .collect();
+    }
+
+    let lines: Vec<&str> = contents.lines().collect();
+    let total_lines = lines.len();
+    
+    // Find matching lines first
+    let matches: Vec<usize> = lines.iter()
+        .enumerate()
+        .filter(|&(_, line)| predicate(line))
+        .map(|(i, _)| i)
+        .collect();
+
+    if matches.is_empty() {
+        return Vec::new();
+    }
+
+    // Collect lines with context, avoiding duplicates
+    let mut result_lines = std::collections::HashSet::new();
+    
+    for &match_idx in &matches {
+        // Add the match itself
+        result_lines.insert(match_idx);
+        
+        // Add context lines before the match
+        let start = if match_idx >= context_lines {
+            match_idx - context_lines
+        } else {
+            0
+        };
+        
+        for i in start..match_idx {
+            result_lines.insert(i);
+        }
+        
+        // Add context lines after the match
+        let end = std::cmp::min(match_idx + context_lines + 1, total_lines);
+        
+        for i in (match_idx + 1)..end {
+            result_lines.insert(i);
+        }
+    }
+    
+    // Sort line numbers and format the result
+    let mut result: Vec<(usize, &str, bool)> = result_lines
+        .into_iter()
+        .map(|i| (i + 1, lines[i], matches.contains(&i)))
+        .collect();
+    
+    result.sort_by_key(|&(num, _, _)| num);
+    
+    result
+}
+
+/// Searches for lines containing the query string (case-sensitive) with context
+///
+/// # Arguments
+///
+/// * `query` - The string to search for
+/// * `contents` - The text to search in
+/// * `context_lines` - Number of lines to include before and after each match
+///
+/// # Returns
+///
+/// * `Vec<(usize, &str, bool)>` - A vector of tuples containing line numbers (1-indexed), lines, and a boolean indicating if the line is a match
+pub fn search_with_context_lines<'a>(
+    query: &str,
+    contents: &'a str,
+    context_lines: usize,
+) -> Vec<(usize, &'a str, bool)> {
+    search_with_context(contents, context_lines, |line| line.contains(query))
+}
+
+/// Searches for lines containing the query string (case-insensitive) with context
+///
+/// # Arguments
+///
+/// * `query` - The string to search for
+/// * `contents` - The text to search in
+/// * `context_lines` - Number of lines to include before and after each match
+///
+/// # Returns
+///
+/// * `Vec<(usize, &str, bool)>` - A vector of tuples containing line numbers (1-indexed), lines, and a boolean indicating if the line is a match
+pub fn search_case_insensitive_with_context_lines<'a>(
+    query: &str,
+    contents: &'a str,
+    context_lines: usize,
+) -> Vec<(usize, &'a str, bool)> {
+    let query_lower = query.to_lowercase();
+    search_with_context(contents, context_lines, |line| {
+        line.to_lowercase().contains(&query_lower)
+    })
+}
+
+/// Searches for lines matching the regex pattern (case-sensitive) with context
+///
+/// # Arguments
+///
+/// * `pattern` - The regex pattern to search for
+/// * `contents` - The text to search in
+/// * `context_lines` - Number of lines to include before and after each match
+///
+/// # Returns
+///
+/// * `Result<Vec<(usize, &str, bool)>, regex::Error>` - A Result containing either a vector of tuples with line numbers, lines, and match indicators, or a regex error
+pub fn search_regex_with_context_lines<'a>(
+    pattern: &str,
+    contents: &'a str,
+    context_lines: usize,
+) -> Result<Vec<(usize, &'a str, bool)>, regex::Error> {
+    let regex = Regex::new(pattern)?;
+    Ok(search_with_context(contents, context_lines, |line| regex.is_match(line)))
+}
+
+/// Searches for lines matching the regex pattern (case-insensitive) with context
+///
+/// # Arguments
+///
+/// * `pattern` - The regex pattern to search for
+/// * `contents` - The text to search in
+/// * `context_lines` - Number of lines to include before and after each match
+///
+/// # Returns
+///
+/// * `Result<Vec<(usize, &str, bool)>, regex::Error>` - A Result containing either a vector of tuples with line numbers, lines, and match indicators, or a regex error
+pub fn search_regex_case_insensitive_with_context_lines<'a>(
+    pattern: &str,
+    contents: &'a str,
+    context_lines: usize,
+) -> Result<Vec<(usize, &'a str, bool)>, regex::Error> {
+    let regex = RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()?;
+    
+    Ok(search_with_context(contents, context_lines, |line| regex.is_match(line)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,5 +500,154 @@ Trust me.";
             vec![(1, "Some content")],
             search_regex(pattern, contents).unwrap()
         );
+    }
+
+    #[test]
+    fn test_search_with_context_lines() {
+        let query = "duct";
+        let contents = "\
+Before
+Rust:
+safe, fast, productive.
+Pick three.
+After
+Duct tape.";
+
+        let expected = vec![
+            (1, "Before", false),
+            (2, "Rust:", false),
+            (3, "safe, fast, productive.", true),
+            (4, "Pick three.", false),
+            (5, "After", false),
+        ];
+
+        assert_eq!(expected, search_with_context_lines(query, contents, 2));
+    }
+
+    #[test]
+    fn test_search_with_context_lines_multiple_matches() {
+        let query = "line";
+        let contents = "\
+First line
+Second content
+Third content
+Fourth line
+Fifth content
+Sixth line";
+
+        let expected = vec![
+            (1, "First line", true),
+            (2, "Second content", false),
+            (3, "Third content", false),
+            (4, "Fourth line", true),
+            (5, "Fifth content", false),
+            (6, "Sixth line", true),
+        ];
+
+        assert_eq!(expected, search_with_context_lines(query, contents, 1));
+    }
+
+    #[test]
+    fn test_search_with_context_lines_overlapping() {
+        let query = "line";
+        let contents = "\
+First content
+Second line
+Third line
+Fourth content";
+
+        let expected = vec![
+            (1, "First content", false),
+            (2, "Second line", true),
+            (3, "Third line", true),
+            (4, "Fourth content", false),
+        ];
+
+        assert_eq!(expected, search_with_context_lines(query, contents, 1));
+    }
+
+    #[test]
+    fn test_search_with_context_lines_at_edges() {
+        let query = "edge";
+        let contents = "\
+edge at start
+middle content
+middle content
+edge at end";
+
+        let expected = vec![
+            (1, "edge at start", true),
+            (2, "middle content", false),
+            (3, "middle content", false),
+            (4, "edge at end", true),
+        ];
+
+        assert_eq!(expected, search_with_context_lines(query, contents, 2));
+    }
+
+    #[test]
+    fn test_search_case_insensitive_with_context_lines() {
+        let query = "rUsT";
+        let contents = "\
+Before
+Rust:
+safe, fast, productive.
+Pick three.
+After
+Trust me.";
+
+        // Match the actual implementation behavior
+        let expected = vec![
+            (1, "Before", false),
+            (2, "Rust:", true),
+            (3, "safe, fast, productive.", false),
+            (5, "After", false),
+            (6, "Trust me.", true),
+        ];
+
+        assert_eq!(
+            expected,
+            search_case_insensitive_with_context_lines(query, contents, 1)
+        );
+    }
+
+    #[test]
+    fn test_search_regex_with_context_lines() {
+        let pattern = r"\b\w{4}\b"; // Match 4-letter words
+        let contents = "\
+The quick brown fox
+jumps over the lazy dog
+sphinx of black quartz
+judge my vow";
+
+        // Match the actual implementation behavior
+        let expected = vec![
+            (1, "The quick brown fox", false),
+            (2, "jumps over the lazy dog", true),
+            (3, "sphinx of black quartz", false),
+        ];
+
+        assert_eq!(
+            expected,
+            search_regex_with_context_lines(pattern, contents, 1).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_zero_context_lines() {
+        let query = "line";
+        let contents = "\
+First line
+Second content
+Third content
+Fourth line";
+
+        // With 0 context lines, only matching lines should be returned
+        let expected = vec![
+            (1, "First line", true),
+            (4, "Fourth line", true),
+        ];
+
+        assert_eq!(expected, search_with_context_lines(query, contents, 0));
     }
 }
