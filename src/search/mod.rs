@@ -51,6 +51,29 @@ Duct tape.";
     }
 
     #[test]
+    fn test_case_sensitive_no_match() {
+        let query = "DUCT"; // Uppercase won't match in case-sensitive mode
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.
+Duct tape.";
+
+        assert_eq!(Vec::<&str>::new(), search(query, contents));
+    }
+
+    #[test]
+    fn test_case_sensitive_multiple_matches() {
+        let query = "the";
+        let contents = "\
+The quick brown fox
+jumps over the lazy dog.
+The end.";
+
+        assert_eq!(vec!["jumps over the lazy dog."], search(query, contents));
+    }
+
+    #[test]
     fn test_case_insensitive() {
         let query = "rUsT";
         let contents = "\
@@ -61,6 +84,20 @@ Trust me.";
 
         assert_eq!(
             vec!["Rust:", "Trust me."],
+            search_case_insensitive(query, contents)
+        );
+    }
+
+    #[test]
+    fn test_case_insensitive_multiple_matches() {
+        let query = "the";
+        let contents = "\
+The quick brown fox
+jumps over the lazy dog.
+The end.";
+
+        assert_eq!(
+            vec!["The quick brown fox", "jumps over the lazy dog.", "The end."],
             search_case_insensitive(query, contents)
         );
     }
@@ -81,5 +118,32 @@ Trust me.";
 
         // Empty contents should return an empty vector
         assert_eq!(Vec::<&str>::new(), search(query, contents));
+    }
+
+    #[test]
+    fn test_multiline_content() {
+        let query = "line";
+        let contents = "First line\nSecond line\nThird line";
+
+        assert_eq!(
+            vec!["First line", "Second line", "Third line"],
+            search(query, contents)
+        );
+    }
+
+    #[test]
+    fn test_special_characters() {
+        let query = ".*";
+        let contents = "Regex .* wildcards\nNormal text";
+
+        assert_eq!(vec!["Regex .* wildcards"], search(query, contents));
+    }
+
+    #[test]
+    fn test_unicode_characters() {
+        let query = "こんにちは";
+        let contents = "Hello World\nこんにちは世界\nGoodbye";
+
+        assert_eq!(vec!["こんにちは世界"], search(query, contents));
     }
 }
