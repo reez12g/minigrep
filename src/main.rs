@@ -23,6 +23,8 @@ fn main() {
         eprintln!("Options:");
         eprintln!("  -i, --ignore-case    Perform case insensitive search");
         eprintln!("  -r, --regex          Use regular expression for pattern matching");
+        eprintln!("  -c, --context        Show 2 lines of context around each match");
+        eprintln!("  -c=N, --context=N    Show N lines of context around each match");
         process::exit(1);
     });
 
@@ -30,6 +32,9 @@ fn main() {
     println!("Searching for '{}' in '{}'", config.query, config.filename);
     println!("Case sensitive: {}", config.case_sensitive);
     println!("Using regex: {}", config.use_regex);
+    if config.context_lines > 0 {
+        println!("Context lines: {}", config.context_lines);
+    }
 
     // Run the application
     if let Err(e) = minigrep::run(config) {
