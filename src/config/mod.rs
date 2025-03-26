@@ -170,13 +170,13 @@ mod tests {
     fn test_config_case_sensitive_default() {
         // Acquire the mutex to prevent other tests from interfering with env vars
         let _lock = ENV_MUTEX.lock().unwrap();
-        
+
         // By default, case_sensitive should be true if CASE_INSENSITIVE is not set
         let args = vec!["program", "query", "filename"].into_iter().map(String::from);
 
         // Explicitly clear the environment variable
         env::remove_var("CASE_INSENSITIVE");
-        
+
         // Create a new Config
         let config = Config::new(args).unwrap();
 
@@ -188,7 +188,7 @@ mod tests {
     fn test_config_case_sensitive_with_env_var() {
         // Acquire the mutex to prevent other tests from interfering with env vars
         let _lock = ENV_MUTEX.lock().unwrap();
-        
+
         // When CASE_INSENSITIVE is set, case_sensitive should be false
         let args = vec!["program", "query", "filename"].into_iter().map(String::from);
 

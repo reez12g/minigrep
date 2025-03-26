@@ -46,10 +46,10 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         } else {
             let match_count = results.iter().filter(|&(_, _, is_match)| *is_match).count();
             println!("Found {} match(es):", match_count);
-            
+
             let mut current_group = Vec::new();
             let mut last_line_num = 0;
-            
+
             // Group continuous lines together and separate non-continuous groups
             for (line_num, line, is_match) in results {
                 // Add separator between non-continuous line groups
@@ -65,11 +65,11 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
                     println!("--");
                     current_group.clear();
                 }
-                
+
                 current_group.push((line_num, line, is_match));
                 last_line_num = line_num;
             }
-            
+
             // Print the last group
             for (num, text, matched) in &current_group {
                 if *matched {
