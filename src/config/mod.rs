@@ -140,6 +140,9 @@ mod tests {
         let original_value = env::var("CASE_INSENSITIVE").ok();
         env::set_var("CASE_INSENSITIVE", "1");
 
+        // Verify the environment variable is set
+        assert_eq!(env::var("CASE_INSENSITIVE").unwrap(), "1");
+
         let config = Config::new(args).unwrap();
 
         // Restore the original value or remove it
@@ -148,6 +151,7 @@ mod tests {
             None => env::remove_var("CASE_INSENSITIVE"),
         }
 
+        // The case_sensitive flag should be false when CASE_INSENSITIVE is set
         assert!(!config.case_sensitive);
     }
 
