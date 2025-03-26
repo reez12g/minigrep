@@ -7,3 +7,74 @@ How dreary to be somebody!
 How public, like a frog
 To tell your name the livelong day
 To an admiring bog!
+
+The Road Not Taken
+By Robert Frost
+
+Two roads diverged in a yellow wood,
+And sorry I could not travel both
+And be one traveler, long I stood
+And looked down one as far as I could
+To where it bent in the undergrowth;
+
+Then took the other, as just as fair,
+And having perhaps the better claim,
+Because it was grassy and wanted wear;
+Though as for that the passing there
+Had worn them really about the same.
+
+Stopping by Woods on a Snowy Evening
+By Robert Frost
+
+Whose woods these are I think I know.
+His house is in the village though;
+He will not see me stopping here
+To watch his woods fill up with snow.
+
+Hope is the thing with feathers
+By Emily Dickinson
+
+Hope is the thing with feathers
+That perches in the soul,
+And sings the tune without the words,
+And never stops at all.
+
+古池や
+蛙飛び込む
+水の音
+- 松尾芭蕉
+
+(Translation: An old pond
+A frog jumps in
+Sound of water)
+
+春はあけぼの
+夏は夜
+秋は夕暮れ
+冬はつとめて
+- 清少納言
+
+(Translation: Spring is dawn
+Summer is night
+Autumn is evening
+Winter is early morning)
+
+SEARCH PATTERN EXAMPLES:
+Case sensitivity: The word "hope" appears in lowercase and "Hope" in uppercase.
+Line boundaries: The word "frog" appears at the beginning, middle, and end of lines.
+Word boundaries: "in" as a standalone word and as part of other words like "winter".
+Multiple occurrences: The word "and" appears multiple times in the same poem.
+Special characters: Words with punctuation like "don't" and "I'm".
+Numbers: 1, 2, 3, 10, 100.
+Repeated phrases: "Two roads diverged" appears twice in Frost's poem.
+
+GREP TEST CASES:
+This line contains the word frog exactly once.
+This line contains the word frog twice - once as frog and once as Frog.
+This line doesn't contain the target word at all.
+This line has multiple instances: hope, Hope, HOPE, hoped, hoping.
+This is line number 1 of numbered lines.
+This is line number 2 of numbered lines.
+This is line number 3 of numbered lines.
+
+END OF FILE
