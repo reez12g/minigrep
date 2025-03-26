@@ -1,3 +1,5 @@
+use regex::{Regex, RegexBuilder};
+
 /// Searches for lines in contents that match a predicate function
 ///
 /// # Arguments
@@ -80,6 +82,64 @@ pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a st
     search_with(contents, |line| {
         line.to_lowercase().contains(&query_lower)
     })
+}
+
+/// Searches for lines matching the regular expression pattern (case-sensitive)
+///
+/// # Arguments
+///
+/// * `pattern` - The regular expression pattern to search for
+/// * `contents` - The text to search in
+///
+/// # Returns
+///
+/// * `Result<Vec<&str>, regex::Error>` - A Result containing either a vector of matching lines or a regex error
+///
+/// # Examples
+///
+/// ```
+/// use minigrep::search::search_regex;
+///
+/// let pattern = r"\w+, \w+";
+/// let contents = "Rust:\nsafe, fast, productive.\nPick three.";
+///
+/// assert_eq!(vec!["safe, fast, productive."], search_regex(pattern, contents).unwrap());
+/// ```
+pub fn search_regex<'a>(pattern: &str, contents: &'a str) -> Result<Vec<&'a str>, regex::Error> {
+    let regex = Regex::new(pattern)?;
+    Ok(search_with(contents, |line| regex.is_match(line)))
+}
+
+/// Searches for lines matching the regular expression pattern (case-insensitive)
+///
+/// # Arguments
+///
+/// * `pattern` - The regular expression pattern to search for
+/// * `contents` - The text to search in
+///
+/// # Returns
+///
+/// * `Result<Vec<&str>, regex::Error>` - A Result containing either a vector of matching lines or a regex error
+///
+/// # Examples
+///
+/// ```
+/// use minigrep::search::search_regex_case_insensitive;
+///
+/// let pattern = r"rust";
+/// let contents = "Rust:\nsafe, fast, productive.\nTrust me.";
+///
+/// assert_eq!(
+///     vec!["Rust:", "Trust me."],
+///     search_regex_case_insensitive(pattern, contents).unwrap()
+/// );
+/// ```
+pub fn search_regex_case_insensitive<'a>(pattern: &str, contents: &'a str) -> Result<Vec<&'a str>, regex::Error> {
+    let regex = RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()?;
+    
+    Ok(search_with(contents, |line| regex.is_match(line)))
 }
 
 #[cfg(test)]
@@ -193,5 +253,84 @@ The end.";
         let contents = "Hello World\nこんにちは世界\nGoodbye";
 
         assert_eq!(vec!["こんにちは世界"], search(query, contents));
+    }
+
+    #[test]
+    fn test_regex_search() {
+        let pattern = r"D\w+";  // Words starting with 'D'
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.
+Duct tape.";
+
+        assert_eq!(
+            vec!["Duct tape."],
+            search_regex(pattern, contents).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_regex_search_multiple_matches() {
+        let pattern = r"(over|fox)";  // Match either "over" or "fox"
+        let contents = "\
+The quick brown fox
+jumps over the lazy dog.
+The end.";
+
+        // This should match any line containing "over" or "fox"
+        let results = search_regex(pattern, contents).unwrap();
+        assert!(results.contains(&"The quick brown fox"));
+        assert!(results.contains(&"jumps over the lazy dog."));
+        assert_eq!(2, results.len());
+    }
+
+    #[test]
+    fn test_regex_search_no_match() {
+        let pattern = r"\d+";  // One or more digits
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.";
+
+        assert_eq!(
+            Vec::<&str>::new(),
+            search_regex(pattern, contents).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_regex_case_insensitive() {
+        let pattern = r"rust";
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.
+Trust me.";
+
+        assert_eq!(
+            vec!["Rust:", "Trust me."],
+            search_regex_case_insensitive(pattern, contents).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_regex_with_invalid_pattern() {
+        let pattern = r"["; // Invalid regex pattern
+        let contents = "Some content";
+
+        assert!(search_regex(pattern, contents).is_err());
+    }
+
+    #[test]
+    fn test_regex_with_empty_pattern() {
+        let pattern = "";
+        let contents = "Some content";
+
+        // An empty pattern matches all lines
+        assert_eq!(
+            vec!["Some content"],
+            search_regex(pattern, contents).unwrap()
+        );
     }
 }
