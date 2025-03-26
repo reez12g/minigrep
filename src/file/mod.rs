@@ -1,7 +1,17 @@
 use std::error::Error;
 use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
+use std::io::{self, prelude::*};
+use thiserror::Error;
+
+/// Error types for file operations
+#[derive(Debug, Error)]
+pub enum FileError {
+    #[error("File not found: {0}")]
+    NotFound(String),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+}
 
 /// Reads the contents of a file into a string
 ///
@@ -12,15 +22,37 @@ use std::path::Path;
 /// # Returns
 ///
 /// * `Result<String, Box<dyn Error>>` - The file contents or an error
+///
+/// # Examples
+///
+/// ```
+/// use minigrep::file::read_file;
+/// use std::fs::File;
+/// use std::io::Write;
+///
+/// // Create a temporary file
+/// let filename = "example.txt";
+/// let content = "Hello, world!";
+/// let mut file = File::create(filename).unwrap();
+/// file.write_all(content.as_bytes()).unwrap();
+///
+/// // Read the file
+/// let result = read_file(filename);
+/// assert!(result.is_ok());
+/// assert_eq!(result.unwrap(), content);
+///
+/// // Clean up
+/// std::fs::remove_file(filename).unwrap();
+/// ```
 pub fn read_file(filename: &str) -> Result<String, Box<dyn Error>> {
-    // Check if the file exists
-    let path = Path::new(filename);
-    if !path.exists() {
-        return Err(format!("File not found: {}", filename).into());
-    }
-
-    // Open the file
-    let mut file = File::open(filename)?;
+    // Open the file, handling the "not found" case specifically
+    let mut file = match File::open(filename) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return Err(Box::new(FileError::NotFound(filename.to_string())));
+        }
+        Err(e) => return Err(Box::new(FileError::IoError(e))),
+    };
 
     // Read the file contents
     let mut contents = String::new();
@@ -32,23 +64,8 @@ pub fn read_file(filename: &str) -> Result<String, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::Write;
-
-    // Helper function to create a temporary test file
-    fn create_test_file(filename: &str, content: &str) -> std::io::Result<()> {
-        let mut file = File::create(filename)?;
-        file.write_all(content.as_bytes())?;
-        Ok(())
-    }
-
-    // Helper function to clean up test files
-    fn cleanup_test_file(filename: &str) -> std::io::Result<()> {
-        if Path::new(filename).exists() {
-            fs::remove_file(filename)?;
-        }
-        Ok(())
-    }
+    #[cfg(test)]
+    use crate::test_utils::{create_test_file, cleanup_test_file};
 
     #[test]
     fn test_read_file_success() {
