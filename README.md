@@ -55,6 +55,13 @@ cargo run -- <query> <filename>
 cargo test
 ```
 
+The project includes comprehensive tests for all modules:
+
+- **Config Tests**: Tests for command-line argument parsing, environment variable handling, and various input types
+- **Search Tests**: Tests for case-sensitive and case-insensitive search, empty queries/contents, Unicode support, and more
+- **File Tests**: Tests for file reading, error handling, and various file content types
+- **Integration Tests**: Tests for the main application functionality and CLI behavior
+
 ## License
 
 This project is open source and available under the MIT License.
