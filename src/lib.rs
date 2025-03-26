@@ -43,8 +43,8 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         println!("No matches found for '{}'", config.query);
     } else {
         println!("Found {} match(es):", results.len());
-        for line in results {
-            println!("{}", line);
+        for (line_num, line) in results {
+            println!("{}:{}", line_num, line);
         }
     }
 

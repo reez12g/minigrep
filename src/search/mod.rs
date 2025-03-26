@@ -9,7 +9,7 @@ use regex::{Regex, RegexBuilder};
 ///
 /// # Returns
 ///
-/// * `Vec<&str>` - A vector of lines that match the predicate
+/// * `Vec<(usize, &str)>` - A vector of tuples containing line numbers (1-indexed) and matching lines
 ///
 /// # Examples
 ///
@@ -19,13 +19,18 @@ use regex::{Regex, RegexBuilder};
 /// let contents = "Line one\nLine two\nLine three";
 /// let matches = search_with(contents, |line| line.contains("two"));
 ///
-/// assert_eq!(vec!["Line two"], matches);
+/// assert_eq!(vec![(2, "Line two")], matches);
 /// ```
-pub fn search_with<'a, F>(contents: &'a str, predicate: F) -> Vec<&'a str>
+pub fn search_with<'a, F>(contents: &'a str, predicate: F) -> Vec<(usize, &'a str)>
 where
     F: Fn(&str) -> bool,
 {
-    contents.lines().filter(|&line| predicate(line)).collect()
+    contents
+        .lines()
+        .enumerate()
+        .filter(|&(_, line)| predicate(line))
+        .map(|(index, line)| (index + 1, line)) // Convert to 1-indexed line number
+        .collect()
 }
 
 /// Searches for lines containing the query string (case-sensitive)
@@ -37,7 +42,7 @@ where
 ///
 /// # Returns
 ///
-/// * `Vec<&str>` - A vector of lines that contain the query
+/// * `Vec<(usize, &str)>` - A vector of tuples containing line numbers (1-indexed) and matching lines
 ///
 /// # Examples
 ///
@@ -47,9 +52,9 @@ where
 /// let query = "duct";
 /// let contents = "Rust:\nsafe, fast, productive.\nPick three.";
 ///
-/// assert_eq!(vec!["safe, fast, productive."], search(query, contents));
+/// assert_eq!(vec![(2, "safe, fast, productive.")], search(query, contents));
 /// ```
-pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<(usize, &'a str)> {
     search_with(contents, |line| line.contains(query))
 }
 
@@ -62,7 +67,7 @@ pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
 ///
 /// # Returns
 ///
-/// * `Vec<&str>` - A vector of lines that contain the query (ignoring case)
+/// * `Vec<(usize, &str)>` - A vector of tuples containing line numbers (1-indexed) and matching lines
 ///
 /// # Examples
 ///
@@ -73,11 +78,11 @@ pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
 /// let contents = "Rust:\nsafe, fast, productive.\nTrust me.";
 ///
 /// assert_eq!(
-///     vec!["Rust:", "Trust me."],
+///     vec![(1, "Rust:"), (3, "Trust me.")],
 ///     search_case_insensitive(query, contents)
 /// );
 /// ```
-pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<(usize, &'a str)> {
     let query_lower = query.to_lowercase();
     search_with(contents, |line| {
         line.to_lowercase().contains(&query_lower)
@@ -93,7 +98,7 @@ pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a st
 ///
 /// # Returns
 ///
-/// * `Result<Vec<&str>, regex::Error>` - A Result containing either a vector of matching lines or a regex error
+/// * `Result<Vec<(usize, &str)>, regex::Error>` - A Result containing either a vector of tuples with line numbers and matching lines or a regex error
 ///
 /// # Examples
 ///
@@ -103,9 +108,9 @@ pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a st
 /// let pattern = r"\w+, \w+";
 /// let contents = "Rust:\nsafe, fast, productive.\nPick three.";
 ///
-/// assert_eq!(vec!["safe, fast, productive."], search_regex(pattern, contents).unwrap());
+/// assert_eq!(vec![(2, "safe, fast, productive.")], search_regex(pattern, contents).unwrap());
 /// ```
-pub fn search_regex<'a>(pattern: &str, contents: &'a str) -> Result<Vec<&'a str>, regex::Error> {
+pub fn search_regex<'a>(pattern: &str, contents: &'a str) -> Result<Vec<(usize, &'a str)>, regex::Error> {
     let regex = Regex::new(pattern)?;
     Ok(search_with(contents, |line| regex.is_match(line)))
 }
@@ -119,7 +124,7 @@ pub fn search_regex<'a>(pattern: &str, contents: &'a str) -> Result<Vec<&'a str>
 ///
 /// # Returns
 ///
-/// * `Result<Vec<&str>, regex::Error>` - A Result containing either a vector of matching lines or a regex error
+/// * `Result<Vec<(usize, &str)>, regex::Error>` - A Result containing either a vector of tuples with line numbers and matching lines or a regex error
 ///
 /// # Examples
 ///
@@ -130,11 +135,11 @@ pub fn search_regex<'a>(pattern: &str, contents: &'a str) -> Result<Vec<&'a str>
 /// let contents = "Rust:\nsafe, fast, productive.\nTrust me.";
 ///
 /// assert_eq!(
-///     vec!["Rust:", "Trust me."],
+///     vec![(1, "Rust:"), (3, "Trust me.")],
 ///     search_regex_case_insensitive(pattern, contents).unwrap()
 /// );
 /// ```
-pub fn search_regex_case_insensitive<'a>(pattern: &str, contents: &'a str) -> Result<Vec<&'a str>, regex::Error> {
+pub fn search_regex_case_insensitive<'a>(pattern: &str, contents: &'a str) -> Result<Vec<(usize, &'a str)>, regex::Error> {
     let regex = RegexBuilder::new(pattern)
         .case_insensitive(true)
         .build()?;
@@ -155,7 +160,7 @@ safe, fast, productive.
 Pick three.
 Duct tape.";
 
-        assert_eq!(vec!["safe, fast, productive."], search(query, contents));
+        assert_eq!(vec![(2, "safe, fast, productive.")], search(query, contents));
     }
 
     #[test]
@@ -167,7 +172,7 @@ safe, fast, productive.
 Pick three.
 Duct tape.";
 
-        assert_eq!(Vec::<&str>::new(), search(query, contents));
+        assert_eq!(Vec::<(usize, &str)>::new(), search(query, contents));
     }
 
     #[test]
@@ -178,7 +183,7 @@ The quick brown fox
 jumps over the lazy dog.
 The end.";
 
-        assert_eq!(vec!["jumps over the lazy dog."], search(query, contents));
+        assert_eq!(vec![(2, "jumps over the lazy dog.")], search(query, contents));
     }
 
     #[test]
@@ -191,7 +196,7 @@ Pick three.
 Trust me.";
 
         assert_eq!(
-            vec!["Rust:", "Trust me."],
+            vec![(1, "Rust:"), (4, "Trust me.")],
             search_case_insensitive(query, contents)
         );
     }
@@ -205,7 +210,7 @@ jumps over the lazy dog.
 The end.";
 
         assert_eq!(
-            vec!["The quick brown fox", "jumps over the lazy dog.", "The end."],
+            vec![(1, "The quick brown fox"), (2, "jumps over the lazy dog."), (3, "The end.")],
             search_case_insensitive(query, contents)
         );
     }
@@ -216,7 +221,7 @@ The end.";
         let contents = "Some content";
 
         // An empty query should match all lines
-        assert_eq!(vec!["Some content"], search(query, contents));
+        assert_eq!(vec![(1, "Some content")], search(query, contents));
     }
 
     #[test]
@@ -225,7 +230,7 @@ The end.";
         let contents = "";
 
         // Empty contents should return an empty vector
-        assert_eq!(Vec::<&str>::new(), search(query, contents));
+        assert_eq!(Vec::<(usize, &str)>::new(), search(query, contents));
     }
 
     #[test]
@@ -234,7 +239,7 @@ The end.";
         let contents = "First line\nSecond line\nThird line";
 
         assert_eq!(
-            vec!["First line", "Second line", "Third line"],
+            vec![(1, "First line"), (2, "Second line"), (3, "Third line")],
             search(query, contents)
         );
     }
@@ -244,7 +249,7 @@ The end.";
         let query = ".*";
         let contents = "Regex .* wildcards\nNormal text";
 
-        assert_eq!(vec!["Regex .* wildcards"], search(query, contents));
+        assert_eq!(vec![(1, "Regex .* wildcards")], search(query, contents));
     }
 
     #[test]
@@ -252,7 +257,7 @@ The end.";
         let query = "こんにちは";
         let contents = "Hello World\nこんにちは世界\nGoodbye";
 
-        assert_eq!(vec!["こんにちは世界"], search(query, contents));
+        assert_eq!(vec![(2, "こんにちは世界")], search(query, contents));
     }
 
     #[test]
@@ -265,23 +270,23 @@ Pick three.
 Duct tape.";
 
         assert_eq!(
-            vec!["Duct tape."],
+            vec![(4, "Duct tape.")],
             search_regex(pattern, contents).unwrap()
         );
     }
 
     #[test]
     fn test_regex_search_multiple_matches() {
-        let pattern = r"(over|fox)";  // Match either "over" or "fox"
+        let pattern = r"over|fox";
         let contents = "\
+Line one
 The quick brown fox
-jumps over the lazy dog.
-The end.";
+jumps over the lazy dog.";
 
         // This should match any line containing "over" or "fox"
         let results = search_regex(pattern, contents).unwrap();
-        assert!(results.contains(&"The quick brown fox"));
-        assert!(results.contains(&"jumps over the lazy dog."));
+        assert!(results.contains(&(2, "The quick brown fox")));
+        assert!(results.contains(&(3, "jumps over the lazy dog.")));
         assert_eq!(2, results.len());
     }
 
@@ -294,7 +299,7 @@ safe, fast, productive.
 Pick three.";
 
         assert_eq!(
-            Vec::<&str>::new(),
+            Vec::<(usize, &str)>::new(),
             search_regex(pattern, contents).unwrap()
         );
     }
@@ -309,7 +314,7 @@ Pick three.
 Trust me.";
 
         assert_eq!(
-            vec!["Rust:", "Trust me."],
+            vec![(1, "Rust:"), (4, "Trust me.")],
             search_regex_case_insensitive(pattern, contents).unwrap()
         );
     }
@@ -329,7 +334,7 @@ Trust me.";
 
         // An empty pattern matches all lines
         assert_eq!(
-            vec!["Some content"],
+            vec![(1, "Some content")],
             search_regex(pattern, contents).unwrap()
         );
     }
