@@ -3,6 +3,8 @@ use std::error::Error;
 pub mod config;
 pub mod search;
 pub mod file;
+#[cfg(test)]
+pub mod test_utils;
 
 use config::Config;
 
@@ -42,24 +44,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
-    use std::path::Path;
-
-    // Helper function to create a temporary test file
-    fn create_test_file(filename: &str, content: &str) -> std::io::Result<()> {
-        let mut file = File::create(filename)?;
-        file.write_all(content.as_bytes())?;
-        Ok(())
-    }
-
-    // Helper function to clean up test files
-    fn cleanup_test_file(filename: &str) -> std::io::Result<()> {
-        if Path::new(filename).exists() {
-            std::fs::remove_file(filename)?;
-        }
-        Ok(())
-    }
+    use crate::test_utils::{create_test_file, cleanup_test_file};
 
     #[test]
     fn test_run_with_matches() {

@@ -1,13 +1,24 @@
 use std::env;
 use std::process;
 
-use minigrep::config::Config;
+use minigrep::config::{Config, ConfigError};
 
 /// The main entry point for the minigrep application
 fn main() {
     // Parse command line arguments
     let config = Config::new(env::args()).unwrap_or_else(|err| {
         eprintln!("Error parsing arguments: {}", err);
+
+        // Provide more specific usage information based on the error
+        match err {
+            ConfigError::MissingQuery => {
+                eprintln!("Missing query string");
+            }
+            ConfigError::MissingFilename => {
+                eprintln!("Missing filename");
+            }
+        }
+
         eprintln!("Usage: minigrep <query> <filename>");
         process::exit(1);
     });
