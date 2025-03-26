@@ -17,6 +17,7 @@ pub struct Config {
     pub filename: String,
     pub case_sensitive: bool,
     pub use_regex: bool,
+    pub context_lines: usize,
 }
 
 impl Config {
@@ -51,6 +52,7 @@ impl Config {
         // Initialize flags
         let mut ignore_case_flag = false;
         let mut use_regex_flag = false;
+        let mut context_lines = 0;
 
         // Process all arguments
         let mut args_vec: Vec<String> = args.collect();
@@ -62,6 +64,23 @@ impl Config {
                 false // Remove this argument
             } else if arg == "-r" || arg == "--regex" {
                 use_regex_flag = true;
+                false // Remove this argument
+            } else if arg == "-c" || arg == "--context" {
+                context_lines = 2; // Default context lines if not specified
+                false // Remove this argument
+            } else if arg.starts_with("-c=") {
+                if let Some(value) = arg.strip_prefix("-c=") {
+                    if let Ok(num) = value.parse::<usize>() {
+                        context_lines = num;
+                    }
+                }
+                false // Remove this argument
+            } else if arg.starts_with("--context=") {
+                if let Some(value) = arg.strip_prefix("--context=") {
+                    if let Ok(num) = value.parse::<usize>() {
+                        context_lines = num;
+                    }
+                }
                 false // Remove this argument
             } else {
                 true // Keep this argument
@@ -91,6 +110,7 @@ impl Config {
             filename,
             case_sensitive,
             use_regex: use_regex_flag,
+            context_lines,
         })
     }
 }
@@ -115,6 +135,7 @@ mod tests {
         assert_eq!(config.query, "query");
         assert_eq!(config.filename, "filename");
         assert!(!config.use_regex);
+        assert_eq!(config.context_lines, 0);
     }
 
     #[test]
@@ -291,5 +312,62 @@ mod tests {
         assert_eq!(config.filename, "filename");
         assert!(config.use_regex);
         assert!(!config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_with_context_short_flag() {
+        // Test with -c flag
+        let args = vec!["program", "-c", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert_eq!(config.context_lines, 2);
+    }
+
+    #[test]
+    fn test_config_with_context_long_flag() {
+        // Test with --context flag
+        let args = vec!["program", "--context", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert_eq!(config.context_lines, 2);
+    }
+
+    #[test]
+    fn test_config_with_context_value_short_flag() {
+        // Test with -c=3 flag
+        let args = vec!["program", "-c=3", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert_eq!(config.context_lines, 3);
+    }
+
+    #[test]
+    fn test_config_with_context_value_long_flag() {
+        // Test with --context=5 flag
+        let args = vec!["program", "--context=5", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert_eq!(config.context_lines, 5);
+    }
+
+    #[test]
+    fn test_config_with_multiple_flags_including_context() {
+        // Test with -i, -r, and -c flags together
+        let args = vec!["program", "-i", "-r", "-c", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
+        assert!(config.use_regex);
+        assert_eq!(config.context_lines, 2);
     }
 }
