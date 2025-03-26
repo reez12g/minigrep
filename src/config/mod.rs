@@ -16,6 +16,7 @@ pub struct Config {
     pub query: String,
     pub filename: String,
     pub case_sensitive: bool,
+    pub use_regex: bool,
 }
 
 impl Config {
@@ -47,8 +48,9 @@ impl Config {
         // Skip the program name (first argument)
         args.next();
 
-        // Initialize flag for case sensitivity
+        // Initialize flags
         let mut ignore_case_flag = false;
+        let mut use_regex_flag = false;
 
         // Process all arguments
         let mut args_vec: Vec<String> = args.collect();
@@ -57,6 +59,9 @@ impl Config {
         args_vec.retain(|arg| {
             if arg == "-i" || arg == "--ignore-case" {
                 ignore_case_flag = true;
+                false // Remove this argument
+            } else if arg == "-r" || arg == "--regex" {
+                use_regex_flag = true;
                 false // Remove this argument
             } else {
                 true // Keep this argument
@@ -76,12 +81,16 @@ impl Config {
         };
 
         // Check if case sensitivity is overridden by environment variable or flag
-        let case_sensitive = env::var("CASE_INSENSITIVE").is_err() && !ignore_case_flag;
+        let case_sensitive = match env::var("CASE_INSENSITIVE") {
+            Ok(_) => false, // If CASE_INSENSITIVE is set (to any value), use case insensitive search
+            Err(_) => !ignore_case_flag, // Otherwise, use case sensitive search unless -i/--ignore-case is specified
+        };
 
         Ok(Config {
             query,
             filename,
             case_sensitive,
+            use_regex: use_regex_flag,
         })
     }
 }
@@ -90,6 +99,13 @@ impl Config {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::Mutex;
+    use lazy_static::lazy_static;
+
+    // Use a mutex to ensure tests that modify env vars don't run concurrently
+    lazy_static! {
+        static ref ENV_MUTEX: Mutex<()> = Mutex::new(());
+    }
 
     #[test]
     fn test_config_new_valid_args() {
@@ -98,6 +114,7 @@ mod tests {
 
         assert_eq!(config.query, "query");
         assert_eq!(config.filename, "filename");
+        assert!(!config.use_regex);
     }
 
     #[test]
@@ -130,45 +147,42 @@ mod tests {
 
     #[test]
     fn test_config_case_sensitive_default() {
+        // Acquire the mutex to prevent other tests from interfering with env vars
+        let _lock = ENV_MUTEX.lock().unwrap();
+        
         // By default, case_sensitive should be true if CASE_INSENSITIVE is not set
         let args = vec!["program", "query", "filename"].into_iter().map(String::from);
 
-        // Temporarily clear the environment variable if it exists
-        let original_value = env::var("CASE_INSENSITIVE").ok();
+        // Explicitly clear the environment variable
         env::remove_var("CASE_INSENSITIVE");
-
+        
+        // Create a new Config
         let config = Config::new(args).unwrap();
 
-        // Restore the original value if it existed
-        if let Some(value) = original_value {
-            env::set_var("CASE_INSENSITIVE", value);
-        }
-
         assert!(config.case_sensitive);
+        assert!(!config.use_regex);
     }
 
     #[test]
     fn test_config_case_sensitive_with_env_var() {
+        // Acquire the mutex to prevent other tests from interfering with env vars
+        let _lock = ENV_MUTEX.lock().unwrap();
+        
         // When CASE_INSENSITIVE is set, case_sensitive should be false
         let args = vec!["program", "query", "filename"].into_iter().map(String::from);
 
-        // Temporarily set the environment variable
-        let original_value = env::var("CASE_INSENSITIVE").ok();
+        // Set the environment variable
         env::set_var("CASE_INSENSITIVE", "1");
 
-        // Verify the environment variable is set
-        assert_eq!(env::var("CASE_INSENSITIVE").unwrap(), "1");
-
+        // Create a new Config
         let config = Config::new(args).unwrap();
 
-        // Restore the original value or remove it
-        match original_value {
-            Some(value) => env::set_var("CASE_INSENSITIVE", value),
-            None => env::remove_var("CASE_INSENSITIVE"),
-        }
+        // Clean up
+        env::remove_var("CASE_INSENSITIVE");
 
         // The case_sensitive flag should be false when CASE_INSENSITIVE is set
         assert!(!config.case_sensitive);
+        assert!(!config.use_regex);
     }
 
     #[test]
@@ -242,6 +256,40 @@ mod tests {
 
         assert_eq!(config.query, "query");
         assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_with_regex_short_flag() {
+        // Test with -r flag
+        let args = vec!["program", "-r", "pattern", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "pattern");
+        assert_eq!(config.filename, "filename");
+        assert!(config.use_regex);
+    }
+
+    #[test]
+    fn test_config_with_regex_long_flag() {
+        // Test with --regex flag
+        let args = vec!["program", "--regex", "pattern", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "pattern");
+        assert_eq!(config.filename, "filename");
+        assert!(config.use_regex);
+    }
+
+    #[test]
+    fn test_config_with_regex_and_ignore_case_flags() {
+        // Test with both regex and ignore case flags
+        let args = vec!["program", "-r", "-i", "pattern", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "pattern");
+        assert_eq!(config.filename, "filename");
+        assert!(config.use_regex);
         assert!(!config.case_sensitive);
     }
 }
