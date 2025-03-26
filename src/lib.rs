@@ -22,10 +22,20 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let contents = file::read_file(&config.filename)?;
 
     // Perform the search
-    let results = if config.case_sensitive {
-        search::search(&config.query, &contents)
+    let results = if config.use_regex {
+        // Use regex-based search
+        if config.case_sensitive {
+            search::search_regex(&config.query, &contents)?
+        } else {
+            search::search_regex_case_insensitive(&config.query, &contents)?
+        }
     } else {
-        search::search_case_insensitive(&config.query, &contents)
+        // Use simple string search
+        if config.case_sensitive {
+            search::search(&config.query, &contents)
+        } else {
+            search::search_case_insensitive(&config.query, &contents)
+        }
     };
 
     // Print the results
@@ -59,6 +69,7 @@ mod tests {
             query: "test".to_string(),
             filename: filename.to_string(),
             case_sensitive: true,
+            use_regex: false,
         };
 
         // Run the application
@@ -83,6 +94,7 @@ mod tests {
             query: "test".to_string(),
             filename: filename.to_string(),
             case_sensitive: false,
+            use_regex: false,
         };
 
         // Run the application
@@ -107,6 +119,7 @@ mod tests {
             query: "nonexistent".to_string(),
             filename: filename.to_string(),
             case_sensitive: true,
+            use_regex: false,
         };
 
         // Run the application
@@ -130,6 +143,7 @@ mod tests {
             query: "test".to_string(),
             filename: filename.to_string(),
             case_sensitive: true,
+            use_regex: false,
         };
 
         // Run the application
@@ -154,6 +168,7 @@ mod tests {
             query: "".to_string(),
             filename: filename.to_string(),
             case_sensitive: true,
+            use_regex: false,
         };
 
         // Run the application
@@ -171,6 +186,7 @@ mod tests {
             query: "test".to_string(),
             filename: "nonexistent_file.txt".to_string(),
             case_sensitive: true,
+            use_regex: false,
         };
 
         let result = run(config);
@@ -193,6 +209,7 @@ mod tests {
             query: "世界".to_string(),
             filename: filename.to_string(),
             case_sensitive: true,
+            use_regex: false,
         };
 
         // Run the application
@@ -202,5 +219,80 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_run_with_regex() {
+        // Create a test file
+        let filename = "test_run_with_regex.txt";
+        let contents = "Line one\nLine two\nLine three\nAnother line";
+
+        create_test_file(filename, contents).unwrap();
+
+        // Create a config with regex enabled
+        let config = Config {
+            query: r"\bline\b".to_string(),  // 'line' as a whole word
+            filename: filename.to_string(),
+            case_sensitive: true,
+            use_regex: true,
+        };
+
+        // Run the application
+        let result = run(config);
+
+        // Clean up
+        cleanup_test_file(filename).unwrap();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_run_with_regex_case_insensitive() {
+        // Create a test file
+        let filename = "test_run_with_regex_case_insensitive.txt";
+        let contents = "Line one\nLine two\nLINE three\nAnother line";
+
+        create_test_file(filename, contents).unwrap();
+
+        // Create a config with regex enabled and case insensitive
+        let config = Config {
+            query: r"line".to_string(),
+            filename: filename.to_string(),
+            case_sensitive: false,
+            use_regex: true,
+        };
+
+        // Run the application
+        let result = run(config);
+
+        // Clean up
+        cleanup_test_file(filename).unwrap();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_run_with_invalid_regex() {
+        // Create a test file
+        let filename = "test_run_with_invalid_regex.txt";
+        let contents = "Line one\nLine two\nLine three";
+
+        create_test_file(filename, contents).unwrap();
+
+        // Create a config with an invalid regex pattern
+        let config = Config {
+            query: r"[".to_string(),  // Invalid regex pattern
+            filename: filename.to_string(),
+            case_sensitive: true,
+            use_regex: true,
+        };
+
+        // Run the application
+        let result = run(config);
+
+        // Clean up
+        cleanup_test_file(filename).unwrap();
+
+        assert!(result.is_err());
     }
 }

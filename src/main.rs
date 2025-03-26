@@ -22,12 +22,14 @@ fn main() {
         eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
         eprintln!("Options:");
         eprintln!("  -i, --ignore-case    Perform case insensitive search");
+        eprintln!("  -r, --regex          Use regular expression for pattern matching");
         process::exit(1);
     });
 
     // Display search parameters
     println!("Searching for '{}' in '{}'", config.query, config.filename);
     println!("Case sensitive: {}", config.case_sensitive);
+    println!("Using regex: {}", config.use_regex);
 
     // Run the application
     if let Err(e) = minigrep::run(config) {
@@ -124,5 +126,19 @@ mod tests {
         assert!(stdout.contains("Searching for 'BODY'"));
         assert!(stdout.contains("Case sensitive: false"));
         assert!(stdout.contains("Found"));
+    }
+
+    #[test]
+    fn test_cli_with_regex_flag() {
+        // Test running the CLI with the -r flag
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "-r", "b.dy", "poem.txt"])
+            .output()
+            .expect("Failed to execute command");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(stdout.contains("Searching for 'b.dy'"));
+        assert!(stdout.contains("Using regex: true"));
     }
 }
