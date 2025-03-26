@@ -47,20 +47,36 @@ impl Config {
         // Skip the program name (first argument)
         args.next();
 
+        // Initialize flag for case sensitivity
+        let mut ignore_case_flag = false;
+
+        // Process all arguments
+        let mut args_vec: Vec<String> = args.collect();
+
+        // Check for flags
+        args_vec.retain(|arg| {
+            if arg == "-i" || arg == "--ignore-case" {
+                ignore_case_flag = true;
+                false // Remove this argument
+            } else {
+                true // Keep this argument
+            }
+        });
+
         // Parse the query string
-        let query = match args.next() {
-            Some(arg) => arg,
+        let query = match args_vec.get(0) {
+            Some(arg) => arg.clone(),
             None => return Err(ConfigError::MissingQuery),
         };
 
         // Parse the filename
-        let filename = match args.next() {
-            Some(arg) => arg,
+        let filename = match args_vec.get(1) {
+            Some(arg) => arg.clone(),
             None => return Err(ConfigError::MissingFilename),
         };
 
-        // Check if case sensitivity is overridden by environment variable
-        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
+        // Check if case sensitivity is overridden by environment variable or flag
+        let case_sensitive = env::var("CASE_INSENSITIVE").is_err() && !ignore_case_flag;
 
         Ok(Config {
             query,
@@ -183,5 +199,49 @@ mod tests {
 
         assert_eq!(config.query, "こんにちは世界");
         assert_eq!(config.filename, "filename");
+    }
+
+    #[test]
+    fn test_config_with_ignore_case_short_flag() {
+        // Test with -i flag
+        let args = vec!["program", "-i", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_with_ignore_case_long_flag() {
+        // Test with --ignore-case flag
+        let args = vec!["program", "--ignore-case", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_with_flag_in_different_position() {
+        // Test with flag in a different position
+        let args = vec!["program", "query", "-i", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_with_multiple_flags() {
+        // Test with both short and long flags (should still work)
+        let args = vec!["program", "-i", "--ignore-case", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
     }
 }

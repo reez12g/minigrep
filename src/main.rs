@@ -19,7 +19,9 @@ fn main() {
             }
         }
 
-        eprintln!("Usage: minigrep <query> <filename>");
+        eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
+        eprintln!("Options:");
+        eprintln!("  -i, --ignore-case    Perform case insensitive search");
         process::exit(1);
     });
 
@@ -49,7 +51,7 @@ mod tests {
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         assert!(stderr.contains("Error parsing arguments"));
-        assert!(stderr.contains("Usage: minigrep <query> <filename>"));
+        assert!(stderr.contains("Usage: minigrep [OPTIONS] <query> <filename>"));
     }
 
     #[test]
@@ -91,6 +93,36 @@ mod tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         assert!(stdout.contains("Searching for 'body'"));
+        assert!(stdout.contains("Found"));
+    }
+
+    #[test]
+    fn test_cli_with_ignore_case_flag() {
+        // Test running the CLI with the -i flag
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "-i", "BODY", "poem.txt"])
+            .output()
+            .expect("Failed to execute command");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(stdout.contains("Searching for 'BODY'"));
+        assert!(stdout.contains("Case sensitive: false"));
+        assert!(stdout.contains("Found"));
+    }
+
+    #[test]
+    fn test_cli_with_long_ignore_case_flag() {
+        // Test running the CLI with the --ignore-case flag
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "--ignore-case", "BODY", "poem.txt"])
+            .output()
+            .expect("Failed to execute command");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(stdout.contains("Searching for 'BODY'"));
+        assert!(stdout.contains("Case sensitive: false"));
         assert!(stdout.contains("Found"));
     }
 }
