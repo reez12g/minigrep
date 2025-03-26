@@ -6,6 +6,8 @@ A simple command-line utility for searching text in files, similar to the Unix `
 
 - Search for text in files
 - Case-sensitive and case-insensitive search modes
+- Regular expression pattern matching
+- Command-line flags for easy configuration
 - Detailed error messages
 - Modular code structure
 
@@ -13,16 +15,25 @@ A simple command-line utility for searching text in files, similar to the Unix `
 
 ```bash
 # Basic usage
-minigrep <query> <filename>
+minigrep [OPTIONS] <query> <filename>
+
+# Options:
+#   -i, --ignore-case    Perform case insensitive search
+#   -r, --regex          Use regular expression for pattern matching
 
 # Example: Search for "body" in poem.txt
 minigrep body poem.txt
 
-# Case-insensitive search (using environment variable)
-CASE_INSENSITIVE=1 minigrep <query> <filename>
-
 # Example: Case-insensitive search for "body" in poem.txt
+minigrep -i body poem.txt
+# or
 CASE_INSENSITIVE=1 minigrep body poem.txt
+
+# Example: Regular expression search
+minigrep -r "b.dy" poem.txt
+
+# Example: Case-insensitive regular expression search
+minigrep -i -r "b.dy" poem.txt
 ```
 
 ## Project Structure
