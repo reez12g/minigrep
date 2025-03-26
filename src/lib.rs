@@ -22,29 +22,89 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let contents = file::read_file(&config.filename)?;
 
     // Perform the search
-    let results = if config.use_regex {
-        // Use regex-based search
-        if config.case_sensitive {
-            search::search_regex(&config.query, &contents)?
+    if config.context_lines > 0 {
+        // Use search with context lines
+        let results = if config.use_regex {
+            // Use regex-based search
+            if config.case_sensitive {
+                search::search_regex_with_context_lines(&config.query, &contents, config.context_lines)?
+            } else {
+                search::search_regex_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)?
+            }
         } else {
-            search::search_regex_case_insensitive(&config.query, &contents)?
-        }
-    } else {
-        // Use simple string search
-        if config.case_sensitive {
-            search::search(&config.query, &contents)
-        } else {
-            search::search_case_insensitive(&config.query, &contents)
-        }
-    };
+            // Use simple string search
+            if config.case_sensitive {
+                search::search_with_context_lines(&config.query, &contents, config.context_lines)
+            } else {
+                search::search_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)
+            }
+        };
 
-    // Print the results
-    if results.is_empty() {
-        println!("No matches found for '{}'", config.query);
+        // Print the results
+        if results.is_empty() {
+            println!("No matches found for '{}'", config.query);
+        } else {
+            let match_count = results.iter().filter(|&(_, _, is_match)| *is_match).count();
+            println!("Found {} match(es):", match_count);
+            
+            let mut current_group = Vec::new();
+            let mut last_line_num = 0;
+            
+            // Group continuous lines together and separate non-continuous groups
+            for (line_num, line, is_match) in results {
+                // Add separator between non-continuous line groups
+                if !current_group.is_empty() && line_num > last_line_num + 1 {
+                    // Print the current group
+                    for (num, text, matched) in &current_group {
+                        if *matched {
+                            println!("{}:{}", num, text);
+                        } else {
+                            println!("{}~{}", num, text);
+                        }
+                    }
+                    println!("--");
+                    current_group.clear();
+                }
+                
+                current_group.push((line_num, line, is_match));
+                last_line_num = line_num;
+            }
+            
+            // Print the last group
+            for (num, text, matched) in &current_group {
+                if *matched {
+                    println!("{}:{}", num, text);
+                } else {
+                    println!("{}~{}", num, text);
+                }
+            }
+        }
     } else {
-        println!("Found {} match(es):", results.len());
-        for (line_num, line) in results {
-            println!("{}:{}", line_num, line);
+        // Use regular search without context
+        let results = if config.use_regex {
+            // Use regex-based search
+            if config.case_sensitive {
+                search::search_regex(&config.query, &contents)?
+            } else {
+                search::search_regex_case_insensitive(&config.query, &contents)?
+            }
+        } else {
+            // Use simple string search
+            if config.case_sensitive {
+                search::search(&config.query, &contents)
+            } else {
+                search::search_case_insensitive(&config.query, &contents)
+            }
+        };
+
+        // Print the results
+        if results.is_empty() {
+            println!("No matches found for '{}'", config.query);
+        } else {
+            println!("Found {} match(es):", results.len());
+            for (line_num, line) in results {
+                println!("{}:{}", line_num, line);
+            }
         }
     }
 
@@ -70,6 +130,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: false,
+            context_lines: 0,
         };
 
         // Run the application
@@ -95,6 +156,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: false,
             use_regex: false,
+            context_lines: 0,
         };
 
         // Run the application
@@ -120,6 +182,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: false,
+            context_lines: 0,
         };
 
         // Run the application
@@ -144,6 +207,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: false,
+            context_lines: 0,
         };
 
         // Run the application
@@ -169,6 +233,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: false,
+            context_lines: 0,
         };
 
         // Run the application
@@ -187,6 +252,7 @@ mod tests {
             filename: "nonexistent_file.txt".to_string(),
             case_sensitive: true,
             use_regex: false,
+            context_lines: 0,
         };
 
         let result = run(config);
@@ -210,6 +276,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: false,
+            context_lines: 0,
         };
 
         // Run the application
@@ -235,6 +302,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: true,
+            context_lines: 0,
         };
 
         // Run the application
@@ -260,6 +328,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: false,
             use_regex: true,
+            context_lines: 0,
         };
 
         // Run the application
@@ -285,6 +354,7 @@ mod tests {
             filename: filename.to_string(),
             case_sensitive: true,
             use_regex: true,
+            context_lines: 0,
         };
 
         // Run the application
@@ -294,5 +364,31 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_with_context_lines() {
+        // Create a test file
+        let filename = "test_run_with_context.txt";
+        let contents = "Line one\nLine two\nLine with test\nAnother line\nTest again\nFinal line";
+
+        create_test_file(filename, contents).unwrap();
+
+        // Create a config with context lines enabled
+        let config = Config {
+            query: "test".to_string(),
+            filename: filename.to_string(),
+            case_sensitive: true,
+            use_regex: false,
+            context_lines: 1,
+        };
+
+        // Run the application
+        let result = run(config);
+
+        // Clean up
+        cleanup_test_file(filename).unwrap();
+
+        assert!(result.is_ok());
     }
 }
