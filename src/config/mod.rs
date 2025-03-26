@@ -18,7 +18,7 @@ impl Config {
     /// # Returns
     ///
     /// * `Result<Config, &'static str>` - A Result containing either a Config or an error message
-    pub fn new<T>(mut args: T) -> Result<Config, &'static str> 
+    pub fn new<T>(mut args: T) -> Result<Config, &'static str>
     where
         T: Iterator<Item = String>,
     {
@@ -51,12 +51,13 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
 
     #[test]
     fn test_config_new_valid_args() {
         let args = vec!["program", "query", "filename"].into_iter().map(String::from);
         let config = Config::new(args).unwrap();
-        
+
         assert_eq!(config.query, "query");
         assert_eq!(config.filename, "filename");
     }
@@ -65,7 +66,7 @@ mod tests {
     fn test_config_new_missing_query() {
         let args = vec!["program"].into_iter().map(String::from);
         let result = Config::new(args);
-        
+
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Missing query string");
     }
@@ -74,8 +75,87 @@ mod tests {
     fn test_config_new_missing_filename() {
         let args = vec!["program", "query"].into_iter().map(String::from);
         let result = Config::new(args);
-        
+
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Missing filename");
+    }
+
+    #[test]
+    fn test_config_new_with_extra_args() {
+        // Extra arguments should be ignored
+        let args = vec!["program", "query", "filename", "extra"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+    }
+
+    #[test]
+    fn test_config_case_sensitive_default() {
+        // By default, case_sensitive should be true if CASE_INSENSITIVE is not set
+        let args = vec!["program", "query", "filename"].into_iter().map(String::from);
+
+        // Temporarily clear the environment variable if it exists
+        let original_value = env::var("CASE_INSENSITIVE").ok();
+        env::remove_var("CASE_INSENSITIVE");
+
+        let config = Config::new(args).unwrap();
+
+        // Restore the original value if it existed
+        if let Some(value) = original_value {
+            env::set_var("CASE_INSENSITIVE", value);
+        }
+
+        assert!(config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_case_sensitive_with_env_var() {
+        // When CASE_INSENSITIVE is set, case_sensitive should be false
+        let args = vec!["program", "query", "filename"].into_iter().map(String::from);
+
+        // Temporarily set the environment variable
+        let original_value = env::var("CASE_INSENSITIVE").ok();
+        env::set_var("CASE_INSENSITIVE", "1");
+
+        let config = Config::new(args).unwrap();
+
+        // Restore the original value or remove it
+        match original_value {
+            Some(value) => env::set_var("CASE_INSENSITIVE", value),
+            None => env::remove_var("CASE_INSENSITIVE"),
+        }
+
+        assert!(!config.case_sensitive);
+    }
+
+    #[test]
+    fn test_config_with_empty_query() {
+        // Empty query should be valid
+        let args = vec!["program", "", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "");
+        assert_eq!(config.filename, "filename");
+    }
+
+    #[test]
+    fn test_config_with_special_characters() {
+        // Query with special characters should be valid
+        let args = vec!["program", ".*+?^${}()|[]\\", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, ".*+?^${}()|[]\\");
+        assert_eq!(config.filename, "filename");
+    }
+
+    #[test]
+    fn test_config_with_unicode_characters() {
+        // Query with Unicode characters should be valid
+        let args = vec!["program", "こんにちは世界", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "こんにちは世界");
+        assert_eq!(config.filename, "filename");
     }
 }
