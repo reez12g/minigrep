@@ -143,7 +143,7 @@ pub fn search_regex_case_insensitive<'a>(pattern: &str, contents: &'a str) -> Re
     let regex = RegexBuilder::new(pattern)
         .case_insensitive(true)
         .build()?;
-    
+
     Ok(search_with(contents, |line| regex.is_match(line)))
 }
 
@@ -177,7 +177,7 @@ where
 
     let lines: Vec<&str> = contents.lines().collect();
     let total_lines = lines.len();
-    
+
     // Find matching lines first
     let matches: Vec<usize> = lines.iter()
         .enumerate()
@@ -191,38 +191,38 @@ where
 
     // Collect lines with context, avoiding duplicates
     let mut result_lines = std::collections::HashSet::new();
-    
+
     for &match_idx in &matches {
         // Add the match itself
         result_lines.insert(match_idx);
-        
+
         // Add context lines before the match
         let start = if match_idx >= context_lines {
             match_idx - context_lines
         } else {
             0
         };
-        
+
         for i in start..match_idx {
             result_lines.insert(i);
         }
-        
+
         // Add context lines after the match
         let end = std::cmp::min(match_idx + context_lines + 1, total_lines);
-        
+
         for i in (match_idx + 1)..end {
             result_lines.insert(i);
         }
     }
-    
+
     // Sort line numbers and format the result
     let mut result: Vec<(usize, &str, bool)> = result_lines
         .into_iter()
         .map(|i| (i + 1, lines[i], matches.contains(&i)))
         .collect();
-    
+
     result.sort_by_key(|&(num, _, _)| num);
-    
+
     result
 }
 
@@ -306,7 +306,7 @@ pub fn search_regex_case_insensitive_with_context_lines<'a>(
     let regex = RegexBuilder::new(pattern)
         .case_insensitive(true)
         .build()?;
-    
+
     Ok(search_with_context(contents, context_lines, |line| regex.is_match(line)))
 }
 
