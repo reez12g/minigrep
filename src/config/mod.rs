@@ -1,7 +1,17 @@
 use std::env;
+use thiserror::Error;
+
+/// Error types for Config operations
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("Missing query string")]
+    MissingQuery,
+    #[error("Missing filename")]
+    MissingFilename,
+}
 
 /// Configuration for the minigrep application
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Config {
     pub query: String,
     pub filename: String,
@@ -17,8 +27,20 @@ impl Config {
     ///
     /// # Returns
     ///
-    /// * `Result<Config, &'static str>` - A Result containing either a Config or an error message
-    pub fn new<T>(mut args: T) -> Result<Config, &'static str>
+    /// * `Result<Config, ConfigError>` - A Result containing either a Config or an error
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minigrep::config::Config;
+    ///
+    /// let args = vec!["program", "query", "filename"].into_iter().map(String::from);
+    /// let config = Config::new(args).unwrap();
+    ///
+    /// assert_eq!(config.query, "query");
+    /// assert_eq!(config.filename, "filename");
+    /// ```
+    pub fn new<T>(mut args: T) -> Result<Config, ConfigError>
     where
         T: Iterator<Item = String>,
     {
@@ -28,13 +50,13 @@ impl Config {
         // Parse the query string
         let query = match args.next() {
             Some(arg) => arg,
-            None => return Err("Missing query string"),
+            None => return Err(ConfigError::MissingQuery),
         };
 
         // Parse the filename
         let filename = match args.next() {
             Some(arg) => arg,
-            None => return Err("Missing filename"),
+            None => return Err(ConfigError::MissingFilename),
         };
 
         // Check if case sensitivity is overridden by environment variable
@@ -68,7 +90,7 @@ mod tests {
         let result = Config::new(args);
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Missing query string");
+        assert!(matches!(result.unwrap_err(), ConfigError::MissingQuery));
     }
 
     #[test]
@@ -77,7 +99,7 @@ mod tests {
         let result = Config::new(args);
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Missing filename");
+        assert!(matches!(result.unwrap_err(), ConfigError::MissingFilename));
     }
 
     #[test]
