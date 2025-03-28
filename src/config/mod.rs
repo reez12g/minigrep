@@ -6,17 +6,36 @@ use thiserror::Error;
 pub enum ConfigError {
     #[error("Missing query string")]
     MissingQuery,
+
     #[error("Missing filename")]
     MissingFilename,
+
+    #[error("Invalid context value: {0}")]
+    InvalidContextValue(String),
+
+    #[error("Invalid option: {0}")]
+    InvalidOption(String),
 }
 
 /// Configuration for the minigrep application
+///
+/// This struct holds all the configuration options for the minigrep application,
+/// including the search query, target filename, and various search options.
 #[derive(Debug, Default)]
 pub struct Config {
+    /// The string or pattern to search for
     pub query: String,
+
+    /// The file to search in
     pub filename: String,
+
+    /// Whether the search is case-sensitive (true) or case-insensitive (false)
     pub case_sensitive: bool,
+
+    /// Whether to use regex pattern matching (true) or simple string matching (false)
     pub use_regex: bool,
+
+    /// Number of context lines to show before and after each match (0 for no context)
     pub context_lines: usize,
 }
 
@@ -31,8 +50,17 @@ impl Config {
     ///
     /// * `Result<Config, ConfigError>` - A Result containing either a Config or an error
     ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - No query string is provided (`ConfigError::MissingQuery`)
+    /// - No filename is provided (`ConfigError::MissingFilename`)
+    /// - An invalid context value is provided (`ConfigError::InvalidContextValue`)
+    /// - An invalid option is provided (`ConfigError::InvalidOption`)
+    ///
     /// # Examples
     ///
+    /// Basic usage:
     /// ```
     /// use minigrep::config::Config;
     ///
@@ -41,6 +69,19 @@ impl Config {
     ///
     /// assert_eq!(config.query, "query");
     /// assert_eq!(config.filename, "filename");
+    /// ```
+    ///
+    /// With options:
+    /// ```
+    /// use minigrep::config::Config;
+    ///
+    /// let args = vec!["program", "-i", "-c=2", "query", "filename"].into_iter().map(String::from);
+    /// let config = Config::new(args).unwrap();
+    ///
+    /// assert_eq!(config.query, "query");
+    /// assert_eq!(config.filename, "filename");
+    /// assert!(!config.case_sensitive);
+    /// assert_eq!(config.context_lines, 2);
     /// ```
     pub fn new<T>(mut args: T) -> Result<Config, ConfigError>
     where
@@ -55,46 +96,49 @@ impl Config {
         let mut context_lines = 0;
 
         // Process all arguments
-        let mut args_vec: Vec<String> = args.collect();
+        let args_vec: Vec<String> = args.collect();
 
-        // Check for flags
-        args_vec.retain(|arg| {
+        // Process flags and collect non-flag arguments
+        let mut non_flag_args = Vec::new();
+
+        for arg in args_vec {
             if arg == "-i" || arg == "--ignore-case" {
                 ignore_case_flag = true;
-                false // Remove this argument
             } else if arg == "-r" || arg == "--regex" {
                 use_regex_flag = true;
-                false // Remove this argument
             } else if arg == "-c" || arg == "--context" {
                 context_lines = 2; // Default context lines if not specified
-                false // Remove this argument
             } else if arg.starts_with("-c=") {
                 if let Some(value) = arg.strip_prefix("-c=") {
-                    if let Ok(num) = value.parse::<usize>() {
-                        context_lines = num;
+                    match value.parse::<usize>() {
+                        Ok(num) => context_lines = num,
+                        Err(_) => return Err(ConfigError::InvalidContextValue(value.to_string())),
                     }
                 }
-                false // Remove this argument
             } else if arg.starts_with("--context=") {
                 if let Some(value) = arg.strip_prefix("--context=") {
-                    if let Ok(num) = value.parse::<usize>() {
-                        context_lines = num;
+                    match value.parse::<usize>() {
+                        Ok(num) => context_lines = num,
+                        Err(_) => return Err(ConfigError::InvalidContextValue(value.to_string())),
                     }
                 }
-                false // Remove this argument
+            } else if arg.starts_with("-") && arg != "-" {
+                // Unknown option
+                return Err(ConfigError::InvalidOption(arg.to_string()));
             } else {
-                true // Keep this argument
+                // Not a flag, keep as a positional argument
+                non_flag_args.push(arg);
             }
-        });
+        }
 
         // Parse the query string
-        let query = match args_vec.get(0) {
+        let query = match non_flag_args.get(0) {
             Some(arg) => arg.clone(),
             None => return Err(ConfigError::MissingQuery),
         };
 
         // Parse the filename
-        let filename = match args_vec.get(1) {
+        let filename = match non_flag_args.get(1) {
             Some(arg) => arg.clone(),
             None => return Err(ConfigError::MissingFilename),
         };
