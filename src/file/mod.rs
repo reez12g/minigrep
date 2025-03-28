@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use thiserror::Error;
@@ -11,6 +10,9 @@ pub enum FileError {
 
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
+
+    #[error("Failed to read file: {0}")]
+    ReadError(String),
 }
 
 /// Reads the contents of a file into a string
@@ -21,7 +23,14 @@ pub enum FileError {
 ///
 /// # Returns
 ///
-/// * `Result<String, Box<dyn Error>>` - The file contents or an error
+/// * `Result<String, FileError>` - The file contents or a specific error
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The file does not exist (`FileError::NotFound`)
+/// - The file cannot be read due to permissions or other IO errors (`FileError::IoError`)
+/// - The file contains invalid UTF-8 (`FileError::ReadError`)
 ///
 /// # Examples
 ///
@@ -44,21 +53,23 @@ pub enum FileError {
 /// // Clean up
 /// std::fs::remove_file(filename).unwrap();
 /// ```
-pub fn read_file(filename: &str) -> Result<String, Box<dyn Error>> {
+pub fn read_file(filename: &str) -> Result<String, FileError> {
     // Open the file, handling the "not found" case specifically
     let mut file = match File::open(filename) {
         Ok(file) => file,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Err(Box::new(FileError::NotFound(filename.to_string())));
+            return Err(FileError::NotFound(filename.to_string()));
         }
-        Err(e) => return Err(Box::new(FileError::IoError(e))),
+        Err(e) => return Err(FileError::IoError(e)),
     };
 
     // Read the file contents
     let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+    match file.read_to_string(&mut contents) {
+        Ok(_) => Ok(contents),
+        Err(e) => Err(FileError::ReadError(e.to_string())),
+    }
 
-    Ok(contents)
 }
 
 #[cfg(test)]
