@@ -37,6 +37,9 @@ pub struct Config {
 
     /// Number of context lines to show before and after each match (0 for no context)
     pub context_lines: usize,
+
+    /// Whether to search recursively through subdirectories (true) or just the specified file (false)
+    pub recursive: bool,
 }
 
 impl Config {
@@ -93,6 +96,7 @@ impl Config {
         // Initialize flags
         let mut ignore_case_flag = false;
         let mut use_regex_flag = false;
+        let mut recursive_flag = false;
         let mut context_lines = 0;
 
         // Process all arguments
@@ -104,8 +108,10 @@ impl Config {
         for arg in args_vec {
             if arg == "-i" || arg == "--ignore-case" {
                 ignore_case_flag = true;
-            } else if arg == "-r" || arg == "--regex" {
+            } else if arg == "-x" || arg == "--regex" || arg == "-e" || arg == "--regexp" {
                 use_regex_flag = true;
+            } else if arg == "-r" || arg == "--recursive" {
+                recursive_flag = true;
             } else if arg == "-c" || arg == "--context" {
                 context_lines = 2; // Default context lines if not specified
             } else if arg.starts_with("-c=") {
@@ -155,6 +161,7 @@ impl Config {
             case_sensitive,
             use_regex: use_regex_flag,
             context_lines,
+            recursive: recursive_flag,
         })
     }
 }
@@ -326,8 +333,8 @@ mod tests {
 
     #[test]
     fn test_config_with_regex_short_flag() {
-        // Test with -r flag
-        let args = vec!["program", "-r", "pattern", "filename"].into_iter().map(String::from);
+        // Test with -x flag
+        let args = vec!["program", "-x", "pattern", "filename"].into_iter().map(String::from);
         let config = Config::new(args).unwrap();
 
         assert_eq!(config.query, "pattern");
@@ -349,7 +356,7 @@ mod tests {
     #[test]
     fn test_config_with_regex_and_ignore_case_flags() {
         // Test with both regex and ignore case flags
-        let args = vec!["program", "-r", "-i", "pattern", "filename"].into_iter().map(String::from);
+        let args = vec!["program", "-x", "-i", "pattern", "filename"].into_iter().map(String::from);
         let config = Config::new(args).unwrap();
 
         assert_eq!(config.query, "pattern");
@@ -404,8 +411,8 @@ mod tests {
 
     #[test]
     fn test_config_with_multiple_flags_including_context() {
-        // Test with -i, -r, and -c flags together
-        let args = vec!["program", "-i", "-r", "-c", "query", "filename"].into_iter().map(String::from);
+        // Test with -i, -x, and -c flags together
+        let args = vec!["program", "-i", "-x", "-c", "query", "filename"].into_iter().map(String::from);
         let config = Config::new(args).unwrap();
 
         assert_eq!(config.query, "query");
@@ -413,5 +420,41 @@ mod tests {
         assert!(!config.case_sensitive);
         assert!(config.use_regex);
         assert_eq!(config.context_lines, 2);
+    }
+
+    #[test]
+    fn test_config_with_recursive_short_flag() {
+        // Test with -r flag
+        let args = vec!["program", "-r", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(config.recursive);
+    }
+
+    #[test]
+    fn test_config_with_recursive_long_flag() {
+        // Test with --recursive flag
+        let args = vec!["program", "--recursive", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(config.recursive);
+    }
+
+    #[test]
+    fn test_config_with_all_flags() {
+        // Test with all flags together
+        let args = vec!["program", "-i", "-x", "-r", "-c=3", "query", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "query");
+        assert_eq!(config.filename, "filename");
+        assert!(!config.case_sensitive);
+        assert!(config.use_regex);
+        assert!(config.recursive);
+        assert_eq!(config.context_lines, 3);
     }
 }
