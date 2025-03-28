@@ -47,42 +47,65 @@ impl From<regex::Error> for Error {
 /// - The regex pattern is invalid (when using regex search)
 /// - Any other I/O operation fails
 pub fn run(config: Config) -> Result<(), Error> {
-    // Read the file contents
-    let contents = file::read_file(&config.filename)?;
+    if config.recursive {
+        // Recursive search through directory
+        println!("Searching recursively for '{}' in '{}'", config.query, config.filename);
 
-    // Perform the search
-    if config.context_lines > 0 {
-        // Use search with context lines
-        let results = if config.use_regex {
-            // Use regex-based search
-            if config.case_sensitive {
-                search::search_regex_with_context_lines(&config.query, &contents, config.context_lines)?
-            } else {
-                search::search_regex_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)?
-            }
-        } else {
-            // Use simple string search
-            if config.case_sensitive {
-                search::search_with_context_lines(&config.query, &contents, config.context_lines)
-            } else {
-                search::search_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)
-            }
-        };
+        // Find all text files in the directory
+        let files = file::find_text_files(&config.filename)?;
+
+        if files.is_empty() {
+            println!("No text files found in '{}'", config.filename);
+            return Ok(());
+        }
+
+        println!("Searching in {} file(s)...", files.len());
+
+        // Search in all files
+        let results = file::search_files(
+            &files,
+            &config.query,
+            config.case_sensitive,
+            config.use_regex,
+            config.context_lines,
+        )?;
 
         // Print the results
         if results.is_empty() {
             println!("No matches found for '{}'", config.query);
         } else {
-            let match_count = results.iter().filter(|&(_, _, is_match)| *is_match).count();
-            println!("Found {} match(es):", match_count);
+            let match_count = results.iter().filter(|m| m.is_match).count();
+            println!("Found {} match(es) in {} file(s):", match_count, files.len());
 
+            // Group results by file
+            let mut current_file = None;
             let mut current_group = Vec::new();
             let mut last_line_num = 0;
 
-            // Group continuous lines together and separate non-continuous groups
-            for (line_num, line, is_match) in results {
-                // Add separator between non-continuous line groups
-                if !current_group.is_empty() && line_num > last_line_num + 1 {
+            for file_match in &results {
+                // If we're starting a new file
+                if current_file.as_ref().map_or(true, |p| p != &file_match.path) {
+                    // Print the previous file's results
+                    if !current_group.is_empty() {
+                        for (num, text, matched) in &current_group {
+                            if *matched {
+                                println!("{}:{}", num, text);
+                            } else {
+                                println!("{}~{}", num, text);
+                            }
+                        }
+                        println!("--");
+                        current_group.clear();
+                    }
+
+                    // Start a new file
+                    current_file = Some(file_match.path.clone());
+                    println!("\nFile: {}", file_match.path.display());
+                    last_line_num = 0;
+                }
+
+                // Add separator between non-continuous line groups within the same file
+                if !current_group.is_empty() && file_match.line_num > last_line_num + 1 {
                     // Print the current group
                     for (num, text, matched) in &current_group {
                         if *matched {
@@ -95,44 +118,112 @@ pub fn run(config: Config) -> Result<(), Error> {
                     current_group.clear();
                 }
 
-                current_group.push((line_num, line, is_match));
-                last_line_num = line_num;
+                current_group.push((file_match.line_num, &file_match.line, file_match.is_match));
+                last_line_num = file_match.line_num;
             }
 
             // Print the last group
-            for (num, text, matched) in &current_group {
-                if *matched {
-                    println!("{}:{}", num, text);
-                } else {
-                    println!("{}~{}", num, text);
+            if !current_group.is_empty() {
+                for (num, text, matched) in &current_group {
+                    if *matched {
+                        println!("{}:{}", num, text);
+                    } else {
+                        println!("{}~{}", num, text);
+                    }
                 }
             }
         }
     } else {
-        // Use regular search without context
-        let results = if config.use_regex {
-            // Use regex-based search
-            if config.case_sensitive {
-                search::search_regex(&config.query, &contents)?
-            } else {
-                search::search_regex_case_insensitive(&config.query, &contents)?
-            }
-        } else {
-            // Use simple string search
-            if config.case_sensitive {
-                search::search(&config.query, &contents)
-            } else {
-                search::search_case_insensitive(&config.query, &contents)
-            }
-        };
+        // Regular search in a single file
+        println!("Searching for '{}' in '{}'", config.query, config.filename);
 
-        // Print the results
-        if results.is_empty() {
-            println!("No matches found for '{}'", config.query);
+        // Read the file contents
+        let contents = file::read_file(&config.filename)?;
+
+        // Perform the search
+        if config.context_lines > 0 {
+            // Use search with context lines
+            let results = if config.use_regex {
+                // Use regex-based search
+                if config.case_sensitive {
+                    search::search_regex_with_context_lines(&config.query, &contents, config.context_lines)?
+                } else {
+                    search::search_regex_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)?
+                }
+            } else {
+                // Use simple string search
+                if config.case_sensitive {
+                    search::search_with_context_lines(&config.query, &contents, config.context_lines)
+                } else {
+                    search::search_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)
+                }
+            };
+
+            // Print the results
+            if results.is_empty() {
+                println!("No matches found for '{}'", config.query);
+            } else {
+                let match_count = results.iter().filter(|&(_, _, is_match)| *is_match).count();
+                println!("Found {} match(es):", match_count);
+
+                let mut current_group = Vec::new();
+                let mut last_line_num = 0;
+
+                // Group continuous lines together and separate non-continuous groups
+                for (line_num, line, is_match) in results {
+                    // Add separator between non-continuous line groups
+                    if !current_group.is_empty() && line_num > last_line_num + 1 {
+                        // Print the current group
+                        for (num, text, matched) in &current_group {
+                            if *matched {
+                                println!("{}:{}", num, text);
+                            } else {
+                                println!("{}~{}", num, text);
+                            }
+                        }
+                        println!("--");
+                        current_group.clear();
+                    }
+
+                    current_group.push((line_num, line, is_match));
+                    last_line_num = line_num;
+                }
+
+                // Print the last group
+                for (num, text, matched) in &current_group {
+                    if *matched {
+                        println!("{}:{}", num, text);
+                    } else {
+                        println!("{}~{}", num, text);
+                    }
+                }
+            }
         } else {
-            println!("Found {} match(es):", results.len());
-            for (line_num, line) in results {
-                println!("{}:{}", line_num, line);
+            // Use regular search without context
+            let results = if config.use_regex {
+                // Use regex-based search
+                if config.case_sensitive {
+                    search::search_regex(&config.query, &contents)?
+                } else {
+                    search::search_regex_case_insensitive(&config.query, &contents)?
+                }
+            } else {
+                // Use simple string search
+                if config.case_sensitive {
+                    search::search(&config.query, &contents)
+                } else {
+                    search::search_case_insensitive(&config.query, &contents)
+                }
+            };
+
+            // Print the results
+            if results.is_empty() {
+                println!("No matches found for '{}'", config.query);
+            } else {
+                println!("Found {} match(es):", results.len());
+                for (line_num, line) in results {
+                    println!("{}:{}", line_num, line);
+                }
             }
         }
     }
@@ -160,6 +251,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -186,6 +278,7 @@ mod tests {
             case_sensitive: false,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -212,6 +305,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -237,6 +331,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -263,6 +358,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -282,6 +378,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         let result = run(config);
@@ -306,6 +403,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -332,6 +430,7 @@ mod tests {
             case_sensitive: true,
             use_regex: true,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -358,6 +457,7 @@ mod tests {
             case_sensitive: false,
             use_regex: true,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -384,6 +484,7 @@ mod tests {
             case_sensitive: true,
             use_regex: true,
             context_lines: 0,
+            recursive: false,
         };
 
         // Run the application
@@ -410,6 +511,7 @@ mod tests {
             case_sensitive: true,
             use_regex: false,
             context_lines: 1,
+            recursive: false,
         };
 
         // Run the application
@@ -417,6 +519,41 @@ mod tests {
 
         // Clean up
         cleanup_test_file(filename).unwrap();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_run_with_recursive_search() {
+        // Create a temporary directory structure with files
+        let dir_name = "test_recursive_search_dir";
+        let subdir_name = format!("{}/subdir", dir_name);
+
+        let file1 = format!("{}/file1.txt", dir_name);
+        let file2 = format!("{}/file2.txt", subdir_name);
+
+        // Create directory structure
+        std::fs::create_dir_all(&subdir_name).unwrap();
+
+        // Create test files with content
+        create_test_file(&file1, "File one content\nwith test pattern").unwrap();
+        create_test_file(&file2, "File two content\nwith test in subdir").unwrap();
+
+        // Create a config with recursive search enabled
+        let config = Config {
+            query: "test".to_string(),
+            filename: dir_name.to_string(),
+            case_sensitive: true,
+            use_regex: false,
+            context_lines: 0,
+            recursive: true,
+        };
+
+        // Run the application
+        let result = run(config);
+
+        // Clean up
+        std::fs::remove_dir_all(dir_name).unwrap();
 
         assert!(result.is_ok());
     }

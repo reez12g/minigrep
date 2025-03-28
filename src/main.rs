@@ -40,7 +40,8 @@ fn run() -> Result<(), Error> {
             eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
             eprintln!("Options:");
             eprintln!("  -i, --ignore-case    Perform case insensitive search");
-            eprintln!("  -r, --regex          Use regular expression for pattern matching");
+            eprintln!("  -x, --regex          Use regular expression for pattern matching");
+            eprintln!("  -r, --recursive      Search recursively through subdirectories");
             eprintln!("  -c, --context        Show 2 lines of context around each match");
             eprintln!("  -c=N, --context=N    Show N lines of context around each match");
             return Err(Error::Config(err));
@@ -51,6 +52,7 @@ fn run() -> Result<(), Error> {
     println!("Searching for '{}' in '{}'", config.query, config.filename);
     println!("Case sensitive: {}", config.case_sensitive);
     println!("Using regex: {}", config.use_regex);
+    println!("Recursive search: {}", config.recursive);
     if config.context_lines > 0 {
         println!("Context lines: {}", config.context_lines);
     }
@@ -157,18 +159,29 @@ mod tests {
 
     #[test]
     fn test_cli_with_regex_flag() {
-        // Test running the CLI with the -r flag
+        // Test running the CLI with the -x flag (regex)
         let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "-r", "b.dy", "poem.txt"])
+            .args(&["run", "--quiet", "--", "-x", "b.dy", "poem.txt"])
             .output()
             .expect("Failed to execute command");
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // Print the actual output for debugging
-        println!("Actual output: {}", stdout);
-
         assert!(stdout.contains("Searching for 'b.dy'"));
         assert!(stdout.contains("Using regex: true"));
+    }
+
+    #[test]
+    fn test_cli_with_recursive_flag() {
+        // Test running the CLI with the -r flag (recursive)
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "-r", "body", "."])
+            .output()
+            .expect("Failed to execute command");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(stdout.contains("Searching for 'body'"));
+        assert!(stdout.contains("Recursive search: true"));
     }
 }
