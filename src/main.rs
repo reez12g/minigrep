@@ -2,31 +2,50 @@ use std::env;
 use std::process;
 
 use minigrep::config::{Config, ConfigError};
+use minigrep::Error;
 
 /// The main entry point for the minigrep application
 fn main() {
-    // Parse command line arguments
-    let config = Config::new(env::args()).unwrap_or_else(|err| {
-        eprintln!("Error parsing arguments: {}", err);
-
-        // Provide more specific usage information based on the error
-        match err {
-            ConfigError::MissingQuery => {
-                eprintln!("Missing query string");
-            }
-            ConfigError::MissingFilename => {
-                eprintln!("Missing filename");
-            }
-        }
-
-        eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
-        eprintln!("Options:");
-        eprintln!("  -i, --ignore-case    Perform case insensitive search");
-        eprintln!("  -r, --regex          Use regular expression for pattern matching");
-        eprintln!("  -c, --context        Show 2 lines of context around each match");
-        eprintln!("  -c=N, --context=N    Show N lines of context around each match");
+    if let Err(err) = run() {
+        eprintln!("Error: {}", err);
         process::exit(1);
-    });
+    }
+}
+
+/// Runs the application, handling errors
+fn run() -> Result<(), Error> {
+    // Parse command line arguments
+    let config = match Config::new(env::args()) {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("Error parsing arguments: {}", err);
+
+            // Provide more specific usage information based on the error
+            match err {
+                ConfigError::MissingQuery => {
+                    eprintln!("Missing query string");
+                }
+                ConfigError::MissingFilename => {
+                    eprintln!("Missing filename");
+                }
+                ConfigError::InvalidContextValue(ref value) => {
+                    eprintln!("Invalid context value: {}", value);
+                    eprintln!("Context value must be a positive number");
+                }
+                ConfigError::InvalidOption(ref option) => {
+                    eprintln!("Invalid option: {}", option);
+                }
+            }
+
+            eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
+            eprintln!("Options:");
+            eprintln!("  -i, --ignore-case    Perform case insensitive search");
+            eprintln!("  -r, --regex          Use regular expression for pattern matching");
+            eprintln!("  -c, --context        Show 2 lines of context around each match");
+            eprintln!("  -c=N, --context=N    Show N lines of context around each match");
+            return Err(Error::Config(err));
+        }
+    };
 
     // Display search parameters
     println!("Searching for '{}' in '{}'", config.query, config.filename);
@@ -37,9 +56,12 @@ fn main() {
     }
 
     // Run the application
-    if let Err(e) = minigrep::run(config) {
-        eprintln!("Application error: {}", e);
-        process::exit(1);
+    match minigrep::run(config) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Application error: {}", e);
+            Err(e)
+        }
     }
 }
 
@@ -142,6 +164,9 @@ mod tests {
             .expect("Failed to execute command");
 
         let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Print the actual output for debugging
+        println!("Actual output: {}", stdout);
 
         assert!(stdout.contains("Searching for 'b.dy'"));
         assert!(stdout.contains("Using regex: true"));

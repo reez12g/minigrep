@@ -1,4 +1,4 @@
-use std::error::Error;
+use thiserror::Error;
 
 pub mod config;
 pub mod search;
@@ -8,6 +8,28 @@ pub mod test_utils;
 
 use config::Config;
 
+/// Error types for the minigrep application
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Configuration error: {0}")]
+    Config(#[from] config::ConfigError),
+
+    #[error("File error: {0}")]
+    File(#[from] file::FileError),
+
+    #[error("Search error: {0}")]
+    Search(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl From<regex::Error> for Error {
+    fn from(err: regex::Error) -> Self {
+        Error::Search(err.to_string())
+    }
+}
+
 /// Runs the minigrep application with the given configuration
 ///
 /// # Arguments
@@ -16,8 +38,15 @@ use config::Config;
 ///
 /// # Returns
 ///
-/// * `Result<(), Box<dyn Error>>` - Ok if successful, Err otherwise
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+/// * `Result<(), Error>` - Ok if successful, Err otherwise with a specific error type
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The file cannot be read
+/// - The regex pattern is invalid (when using regex search)
+/// - Any other I/O operation fails
+pub fn run(config: Config) -> Result<(), Error> {
     // Read the file contents
     let contents = file::read_file(&config.filename)?;
 
