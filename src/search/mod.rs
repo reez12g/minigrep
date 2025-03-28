@@ -1,4 +1,29 @@
 use regex::{Regex, RegexBuilder};
+use std::collections::HashSet;
+
+/// Represents a search match with line number and content
+#[derive(Debug, PartialEq)]
+pub struct Match<'a> {
+    /// Line number (1-indexed)
+    pub line_num: usize,
+    /// Line content
+    pub line: &'a str,
+    /// Whether this is a direct match or a context line
+    pub is_match: bool,
+}
+
+/// Defines the search strategy to use
+#[derive(Debug, Clone, Copy)]
+pub enum SearchStrategy {
+    /// Case-sensitive string search
+    CaseSensitive,
+    /// Case-insensitive string search
+    CaseInsensitive,
+    /// Case-sensitive regex search
+    RegexSensitive,
+    /// Case-insensitive regex search
+    RegexInsensitive,
+}
 
 /// Searches for lines in contents that match a predicate function
 ///
@@ -31,6 +56,41 @@ where
         .filter(|&(_, line)| predicate(line))
         .map(|(index, line)| (index + 1, line)) // Convert to 1-indexed line number
         .collect()
+}
+
+/// Creates a predicate function based on the search strategy and query
+///
+/// # Arguments
+///
+/// * `query` - The string or pattern to search for
+/// * `strategy` - The search strategy to use
+///
+/// # Returns
+///
+/// * `Result<Box<dyn Fn(&str) -> bool>, regex::Error>` - A boxed predicate function or a regex error
+fn create_predicate<'a>(
+    query: &'a str,
+    strategy: SearchStrategy,
+) -> Result<Box<dyn Fn(&str) -> bool + 'a>, regex::Error> {
+    match strategy {
+        SearchStrategy::CaseSensitive => {
+            Ok(Box::new(move |line: &str| line.contains(query)))
+        }
+        SearchStrategy::CaseInsensitive => {
+            let query_lower = query.to_lowercase();
+            Ok(Box::new(move |line: &str| line.to_lowercase().contains(&query_lower)))
+        }
+        SearchStrategy::RegexSensitive => {
+            let regex = Regex::new(query)?;
+            Ok(Box::new(move |line: &str| regex.is_match(line)))
+        }
+        SearchStrategy::RegexInsensitive => {
+            let regex = RegexBuilder::new(query)
+                .case_insensitive(true)
+                .build()?;
+            Ok(Box::new(move |line: &str| regex.is_match(line)))
+        }
+    }
 }
 
 /// Searches for lines containing the query string (case-sensitive)
@@ -147,32 +207,38 @@ pub fn search_regex_case_insensitive<'a>(pattern: &str, contents: &'a str) -> Re
     Ok(search_with(contents, |line| regex.is_match(line)))
 }
 
-/// Searches for lines containing the query and includes context lines around each match
+/// Performs a search with context lines using the specified strategy
 ///
 /// # Arguments
 ///
-/// * `query` - The string to search for
+/// * `query` - The string or pattern to search for
 /// * `contents` - The text to search in
 /// * `context_lines` - Number of lines to include before and after each match
-/// * `predicate` - A function that takes a line and returns true if it matches
+/// * `strategy` - The search strategy to use
 ///
 /// # Returns
 ///
-/// * `Vec<(usize, &str, bool)>` - A vector of tuples containing line numbers (1-indexed), lines, and a boolean indicating if the line is a match
-pub fn search_with_context<'a, F>(
+/// * `Result<Vec<Match>, regex::Error>` - A Result containing either a vector of Match structs or a regex error
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The regex pattern is invalid (when using regex search)
+pub fn search_with_strategy<'a>(
+    query: &str,
     contents: &'a str,
     context_lines: usize,
-    predicate: F,
-) -> Vec<(usize, &'a str, bool)>
-where
-    F: Fn(&str) -> bool,
-{
+    strategy: SearchStrategy,
+) -> Result<Vec<Match<'a>>, regex::Error> {
+    let predicate = create_predicate(query, strategy)?;
+    
     if context_lines == 0 {
         // If no context lines are requested, just return the matches
-        return search_with(contents, predicate)
+        let results = search_with(contents, |line| predicate(line))
             .into_iter()
-            .map(|(line_num, line)| (line_num, line, true))
+            .map(|(line_num, line)| Match { line_num, line, is_match: true })
             .collect();
+        return Ok(results);
     }
 
     let lines: Vec<&str> = contents.lines().collect();
@@ -186,11 +252,11 @@ where
         .collect();
 
     if matches.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     // Collect lines with context, avoiding duplicates
-    let mut result_lines = std::collections::HashSet::new();
+    let mut result_lines = HashSet::new();
 
     for &match_idx in &matches {
         // Add the match itself
@@ -216,17 +282,21 @@ where
     }
 
     // Sort line numbers and format the result
-    let mut result: Vec<(usize, &str, bool)> = result_lines
+    let mut result: Vec<Match> = result_lines
         .into_iter()
-        .map(|i| (i + 1, lines[i], matches.contains(&i)))
+        .map(|i| Match {
+            line_num: i + 1,
+            line: lines[i],
+            is_match: matches.contains(&i),
+        })
         .collect();
 
-    result.sort_by_key(|&(num, _, _)| num);
+    result.sort_by_key(|m| m.line_num);
 
-    result
+    Ok(result)
 }
 
-/// Searches for lines containing the query string (case-sensitive) with context
+/// Searches for lines containing the query and includes context lines around each match
 ///
 /// # Arguments
 ///
@@ -242,7 +312,13 @@ pub fn search_with_context_lines<'a>(
     contents: &'a str,
     context_lines: usize,
 ) -> Vec<(usize, &'a str, bool)> {
-    search_with_context(contents, context_lines, |line| line.contains(query))
+    match search_with_strategy(query, contents, context_lines, SearchStrategy::CaseSensitive) {
+        Ok(matches) => matches
+            .into_iter()
+            .map(|m| (m.line_num, m.line, m.is_match))
+            .collect(),
+        Err(_) => Vec::new(), // This should never happen for non-regex searches
+    }
 }
 
 /// Searches for lines containing the query string (case-insensitive) with context
@@ -261,10 +337,13 @@ pub fn search_case_insensitive_with_context_lines<'a>(
     contents: &'a str,
     context_lines: usize,
 ) -> Vec<(usize, &'a str, bool)> {
-    let query_lower = query.to_lowercase();
-    search_with_context(contents, context_lines, |line| {
-        line.to_lowercase().contains(&query_lower)
-    })
+    match search_with_strategy(query, contents, context_lines, SearchStrategy::CaseInsensitive) {
+        Ok(matches) => matches
+            .into_iter()
+            .map(|m| (m.line_num, m.line, m.is_match))
+            .collect(),
+        Err(_) => Vec::new(), // This should never happen for non-regex searches
+    }
 }
 
 /// Searches for lines matching the regex pattern (case-sensitive) with context
@@ -283,8 +362,12 @@ pub fn search_regex_with_context_lines<'a>(
     contents: &'a str,
     context_lines: usize,
 ) -> Result<Vec<(usize, &'a str, bool)>, regex::Error> {
-    let regex = Regex::new(pattern)?;
-    Ok(search_with_context(contents, context_lines, |line| regex.is_match(line)))
+    search_with_strategy(pattern, contents, context_lines, SearchStrategy::RegexSensitive)
+        .map(|matches| matches
+            .into_iter()
+            .map(|m| (m.line_num, m.line, m.is_match))
+            .collect()
+        )
 }
 
 /// Searches for lines matching the regex pattern (case-insensitive) with context
@@ -303,11 +386,12 @@ pub fn search_regex_case_insensitive_with_context_lines<'a>(
     contents: &'a str,
     context_lines: usize,
 ) -> Result<Vec<(usize, &'a str, bool)>, regex::Error> {
-    let regex = RegexBuilder::new(pattern)
-        .case_insensitive(true)
-        .build()?;
-
-    Ok(search_with_context(contents, context_lines, |line| regex.is_match(line)))
+    search_with_strategy(pattern, contents, context_lines, SearchStrategy::RegexInsensitive)
+        .map(|matches| matches
+            .into_iter()
+            .map(|m| (m.line_num, m.line, m.is_match))
+            .collect()
+        )
 }
 
 #[cfg(test)]
