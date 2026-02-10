@@ -19,7 +19,11 @@ minigrep [OPTIONS] <query> <filename>
 
 # Options:
 #   -i, --ignore-case    Perform case insensitive search
-#   -r, --regex          Use regular expression for pattern matching
+#   -x, --regex          Use regular expression for pattern matching
+#   -r, --recursive      Search recursively through subdirectories
+#   -c, --context        Show 2 lines of context around each match
+#   -c=N, --context=N    Show N lines of context around each match
+#   -h, --help           Show help
 
 # Example: Search for "body" in poem.txt
 minigrep body poem.txt
@@ -30,10 +34,16 @@ minigrep -i body poem.txt
 CASE_INSENSITIVE=1 minigrep body poem.txt
 
 # Example: Regular expression search
-minigrep -r "b.dy" poem.txt
+minigrep -x "b.dy" poem.txt
 
 # Example: Case-insensitive regular expression search
-minigrep -i -r "b.dy" poem.txt
+minigrep -i -x "b.dy" poem.txt
+
+# Example: Recursive search
+minigrep -r body .
+
+# Example: Search with context lines
+minigrep -c=2 body poem.txt
 ```
 
 ## Project Structure
@@ -72,6 +82,12 @@ The project includes comprehensive tests for all modules:
 - **Search Tests**: Tests for case-sensitive and case-insensitive search, empty queries/contents, Unicode support, and more
 - **File Tests**: Tests for file reading, error handling, and various file content types
 - **Integration Tests**: Tests for the main application functionality and CLI behavior
+
+## Exit codes
+
+- `0`: one or more matches were found
+- `1`: no matches were found
+- `2`: an error occurred (argument parsing or I/O)
 
 ## License
 
