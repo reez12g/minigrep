@@ -15,6 +15,12 @@ pub enum ConfigError {
 
     #[error("Invalid option: {0}")]
     InvalidOption(String),
+
+    #[error("Too many positional arguments; unexpected argument: {0}")]
+    TooManyArguments(String),
+
+    #[error("Help requested")]
+    HelpRequested,
 }
 
 /// Configuration for the minigrep application
@@ -104,31 +110,39 @@ impl Config {
 
         // Process flags and collect non-flag arguments
         let mut non_flag_args = Vec::new();
+        let mut parsing_options = true;
 
         for arg in args_vec {
-            if arg == "-i" || arg == "--ignore-case" {
+            if parsing_options && arg == "--" {
+                parsing_options = false;
+                continue;
+            }
+
+            if parsing_options && (arg == "-h" || arg == "--help") {
+                return Err(ConfigError::HelpRequested);
+            } else if parsing_options && (arg == "-i" || arg == "--ignore-case") {
                 ignore_case_flag = true;
-            } else if arg == "-x" || arg == "--regex" || arg == "-e" || arg == "--regexp" {
+            } else if parsing_options && (arg == "-x" || arg == "--regex" || arg == "-e" || arg == "--regexp") {
                 use_regex_flag = true;
-            } else if arg == "-r" || arg == "--recursive" {
+            } else if parsing_options && (arg == "-r" || arg == "--recursive") {
                 recursive_flag = true;
-            } else if arg == "-c" || arg == "--context" {
+            } else if parsing_options && (arg == "-c" || arg == "--context") {
                 context_lines = 2; // Default context lines if not specified
-            } else if arg.starts_with("-c=") {
+            } else if parsing_options && arg.starts_with("-c=") {
                 if let Some(value) = arg.strip_prefix("-c=") {
                     match value.parse::<usize>() {
                         Ok(num) => context_lines = num,
                         Err(_) => return Err(ConfigError::InvalidContextValue(value.to_string())),
                     }
                 }
-            } else if arg.starts_with("--context=") {
+            } else if parsing_options && arg.starts_with("--context=") {
                 if let Some(value) = arg.strip_prefix("--context=") {
                     match value.parse::<usize>() {
                         Ok(num) => context_lines = num,
                         Err(_) => return Err(ConfigError::InvalidContextValue(value.to_string())),
                     }
                 }
-            } else if arg.starts_with("-") && arg != "-" {
+            } else if parsing_options && arg.starts_with("-") && arg != "-" {
                 // Unknown option
                 return Err(ConfigError::InvalidOption(arg.to_string()));
             } else {
@@ -148,6 +162,10 @@ impl Config {
             Some(arg) => arg.clone(),
             None => return Err(ConfigError::MissingFilename),
         };
+
+        if non_flag_args.len() > 2 {
+            return Err(ConfigError::TooManyArguments(non_flag_args[2].clone()));
+        }
 
         // Check if case sensitivity is overridden by environment variable or flag
         let case_sensitive = match env::var("CASE_INSENSITIVE") {
@@ -209,12 +227,12 @@ mod tests {
 
     #[test]
     fn test_config_new_with_extra_args() {
-        // Extra arguments should be ignored
+        // Extra positional arguments should fail fast
         let args = vec!["program", "query", "filename", "extra"].into_iter().map(String::from);
-        let config = Config::new(args).unwrap();
+        let result = Config::new(args);
 
-        assert_eq!(config.query, "query");
-        assert_eq!(config.filename, "filename");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ConfigError::TooManyArguments(_)));
     }
 
     #[test]
@@ -456,5 +474,24 @@ mod tests {
         assert!(config.use_regex);
         assert!(config.recursive);
         assert_eq!(config.context_lines, 3);
+    }
+
+    #[test]
+    fn test_config_with_help_flag() {
+        let args = vec!["program", "--help"].into_iter().map(String::from);
+        let result = Config::new(args);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ConfigError::HelpRequested));
+    }
+
+    #[test]
+    fn test_config_with_option_terminator() {
+        let args = vec!["program", "--", "-i", "filename"].into_iter().map(String::from);
+        let config = Config::new(args).unwrap();
+
+        assert_eq!(config.query, "-i");
+        assert_eq!(config.filename, "filename");
+        assert!(config.case_sensitive);
     }
 }

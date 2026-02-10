@@ -4,6 +4,17 @@ use std::process;
 use minigrep::config::{Config, ConfigError};
 use minigrep::Error;
 
+fn print_usage() {
+    eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
+    eprintln!("Options:");
+    eprintln!("  -i, --ignore-case    Perform case insensitive search");
+    eprintln!("  -x, --regex          Use regular expression for pattern matching");
+    eprintln!("  -r, --recursive      Search recursively through subdirectories");
+    eprintln!("  -c, --context        Show 2 lines of context around each match");
+    eprintln!("  -c=N, --context=N    Show N lines of context around each match");
+    eprintln!("  -h, --help           Show this help message");
+}
+
 /// The main entry point for the minigrep application
 fn main() {
     if let Err(err) = run() {
@@ -17,6 +28,10 @@ fn run() -> Result<(), Error> {
     // Parse command line arguments
     let config = match Config::new(env::args()) {
         Ok(config) => config,
+        Err(ConfigError::HelpRequested) => {
+            print_usage();
+            return Ok(());
+        }
         Err(err) => {
             eprintln!("Error parsing arguments: {}", err);
 
@@ -35,15 +50,13 @@ fn run() -> Result<(), Error> {
                 ConfigError::InvalidOption(ref option) => {
                     eprintln!("Invalid option: {}", option);
                 }
+                ConfigError::TooManyArguments(ref argument) => {
+                    eprintln!("Too many arguments. Unexpected positional argument: {}", argument);
+                }
+                ConfigError::HelpRequested => {}
             }
 
-            eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
-            eprintln!("Options:");
-            eprintln!("  -i, --ignore-case    Perform case insensitive search");
-            eprintln!("  -x, --regex          Use regular expression for pattern matching");
-            eprintln!("  -r, --recursive      Search recursively through subdirectories");
-            eprintln!("  -c, --context        Show 2 lines of context around each match");
-            eprintln!("  -c=N, --context=N    Show N lines of context around each match");
+            print_usage();
             return Err(Error::Config(err));
         }
     };
@@ -183,5 +196,18 @@ mod tests {
 
         assert!(stdout.contains("Searching for 'body'"));
         assert!(stdout.contains("Recursive search: true"));
+    }
+
+    #[test]
+    fn test_cli_help() {
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "--help"])
+            .output()
+            .expect("Failed to execute command");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(output.status.success());
+        assert!(stderr.contains("Usage: minigrep [OPTIONS] <query> <filename>"));
     }
 }
