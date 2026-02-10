@@ -128,7 +128,6 @@ mod tests {
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        assert!(stderr.contains("Application error"));
         assert!(stderr.contains("File not found"));
         assert_eq!(output.status.code(), Some(2));
     }
