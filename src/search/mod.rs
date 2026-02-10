@@ -245,7 +245,7 @@ pub fn search_with_strategy<'a>(
     let total_lines = lines.len();
 
     // Find matching lines first
-    let matches: Vec<usize> = lines.iter()
+    let matches: HashSet<usize> = lines.iter()
         .enumerate()
         .filter(|&(_, line)| predicate(line))
         .map(|(i, _)| i)
