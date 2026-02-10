@@ -85,16 +85,27 @@ fn run() -> Result<CliOutcome, Error> {
 
 #[cfg(test)]
 mod tests {
+    use lazy_static::lazy_static;
     use std::fs;
-    use std::process::Command;
+    use std::process::{Command, Output};
+    use std::sync::Mutex;
+
+    lazy_static! {
+        static ref CLI_MUTEX: Mutex<()> = Mutex::new(());
+    }
+
+    fn run_cli(args: &[&str]) -> Output {
+        let _lock = CLI_MUTEX.lock().unwrap();
+        Command::new("cargo")
+            .args(args)
+            .output()
+            .expect("Failed to execute command")
+    }
 
     #[test]
     fn test_cli_no_args() {
         // Test running the CLI with no arguments
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet"]);
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -106,10 +117,7 @@ mod tests {
     #[test]
     fn test_cli_missing_filename() {
         // Test running the CLI with only a query argument
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "test"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "test"]);
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -121,10 +129,7 @@ mod tests {
     #[test]
     fn test_cli_nonexistent_file() {
         // Test running the CLI with a nonexistent file
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "test", "nonexistent.txt"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "test", "nonexistent.txt"]);
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -135,10 +140,7 @@ mod tests {
     #[test]
     fn test_cli_with_valid_args() {
         // Test running the CLI with valid arguments
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "body", "poem.txt"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "body", "poem.txt"]);
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -149,10 +151,7 @@ mod tests {
     #[test]
     fn test_cli_with_ignore_case_flag() {
         // Test running the CLI with the -i flag
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "-i", "BODY", "poem.txt"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "-i", "BODY", "poem.txt"]);
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -163,10 +162,7 @@ mod tests {
     #[test]
     fn test_cli_with_long_ignore_case_flag() {
         // Test running the CLI with the --ignore-case flag
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "--ignore-case", "BODY", "poem.txt"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "--ignore-case", "BODY", "poem.txt"]);
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -177,10 +173,7 @@ mod tests {
     #[test]
     fn test_cli_with_regex_flag() {
         // Test running the CLI with the -x flag (regex)
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "-x", "b.dy", "poem.txt"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "-x", "b.dy", "poem.txt"]);
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -191,10 +184,7 @@ mod tests {
     #[test]
     fn test_cli_with_recursive_flag() {
         // Test running the CLI with the -r flag (recursive)
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "-r", "body", "."])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "-r", "body", "."]);
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -204,10 +194,7 @@ mod tests {
 
     #[test]
     fn test_cli_help() {
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "--help"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "--help"]);
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -217,10 +204,7 @@ mod tests {
 
     #[test]
     fn test_cli_no_match_exit_code() {
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "zzzz_missing_pattern", "poem.txt"])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "zzzz_missing_pattern", "poem.txt"]);
 
         assert_eq!(output.status.code(), Some(1));
         assert!(String::from_utf8_lossy(&output.stdout).is_empty());
@@ -231,10 +215,7 @@ mod tests {
         let filename = "test_cli_invalid_utf8.bin";
         fs::write(filename, vec![0xff, 0xfe, b'a', b'b', b'c', b'\n']).unwrap();
 
-        let output = Command::new("cargo")
-            .args(&["run", "--quiet", "--", "abc", filename])
-            .output()
-            .expect("Failed to execute command");
+        let output = run_cli(&["run", "--quiet", "--", "abc", filename]);
 
         fs::remove_file(filename).unwrap();
 
