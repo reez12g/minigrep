@@ -4,6 +4,13 @@ use std::process;
 use minigrep::config::{Config, ConfigError};
 use minigrep::Error;
 
+#[derive(Debug, PartialEq, Eq)]
+enum CliOutcome {
+    Matched,
+    NoMatch,
+    Help,
+}
+
 fn print_usage() {
     eprintln!("Usage: minigrep [OPTIONS] <query> <filename>");
     eprintln!("Options:");
@@ -17,20 +24,24 @@ fn print_usage() {
 
 /// The main entry point for the minigrep application
 fn main() {
-    if let Err(err) = run() {
-        eprintln!("Error: {}", err);
-        process::exit(1);
+    match run() {
+        Ok(CliOutcome::Matched) | Ok(CliOutcome::Help) => {}
+        Ok(CliOutcome::NoMatch) => process::exit(1),
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            process::exit(2);
+        }
     }
 }
 
 /// Runs the application, handling errors
-fn run() -> Result<(), Error> {
+fn run() -> Result<CliOutcome, Error> {
     // Parse command line arguments
     let config = match Config::new(env::args()) {
         Ok(config) => config,
         Err(ConfigError::HelpRequested) => {
             print_usage();
-            return Ok(());
+            return Ok(CliOutcome::Help);
         }
         Err(err) => {
             eprintln!("Error parsing arguments: {}", err);
@@ -61,18 +72,10 @@ fn run() -> Result<(), Error> {
         }
     };
 
-    // Display search parameters
-    println!("Searching for '{}' in '{}'", config.query, config.filename);
-    println!("Case sensitive: {}", config.case_sensitive);
-    println!("Using regex: {}", config.use_regex);
-    println!("Recursive search: {}", config.recursive);
-    if config.context_lines > 0 {
-        println!("Context lines: {}", config.context_lines);
-    }
-
     // Run the application
     match minigrep::run(config) {
-        Ok(_) => Ok(()),
+        Ok(0) => Ok(CliOutcome::NoMatch),
+        Ok(_) => Ok(CliOutcome::Matched),
         Err(e) => {
             eprintln!("Application error: {}", e);
             Err(e)
@@ -96,6 +99,7 @@ mod tests {
 
         assert!(stderr.contains("Error parsing arguments"));
         assert!(stderr.contains("Usage: minigrep [OPTIONS] <query> <filename>"));
+        assert_eq!(output.status.code(), Some(2));
     }
 
     #[test]
@@ -110,6 +114,7 @@ mod tests {
 
         assert!(stderr.contains("Error parsing arguments"));
         assert!(stderr.contains("Missing filename"));
+        assert_eq!(output.status.code(), Some(2));
     }
 
     #[test]
@@ -124,6 +129,7 @@ mod tests {
 
         assert!(stderr.contains("Application error"));
         assert!(stderr.contains("File not found"));
+        assert_eq!(output.status.code(), Some(2));
     }
 
     #[test]
@@ -136,8 +142,8 @@ mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        assert!(stdout.contains("Searching for 'body'"));
-        assert!(stdout.contains("Found"));
+        assert!(stdout.contains("1:I'm nobody! Who are you?"));
+        assert_eq!(output.status.code(), Some(0));
     }
 
     #[test]
@@ -150,9 +156,8 @@ mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        assert!(stdout.contains("Searching for 'BODY'"));
-        assert!(stdout.contains("Case sensitive: false"));
-        assert!(stdout.contains("Found"));
+        assert!(stdout.contains("1:I'm nobody! Who are you?"));
+        assert_eq!(output.status.code(), Some(0));
     }
 
     #[test]
@@ -165,9 +170,8 @@ mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        assert!(stdout.contains("Searching for 'BODY'"));
-        assert!(stdout.contains("Case sensitive: false"));
-        assert!(stdout.contains("Found"));
+        assert!(stdout.contains("1:I'm nobody! Who are you?"));
+        assert_eq!(output.status.code(), Some(0));
     }
 
     #[test]
@@ -180,8 +184,8 @@ mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        assert!(stdout.contains("Searching for 'b.dy'"));
-        assert!(stdout.contains("Using regex: true"));
+        assert!(stdout.contains("1:I'm nobody! Who are you?"));
+        assert_eq!(output.status.code(), Some(0));
     }
 
     #[test]
@@ -194,8 +198,8 @@ mod tests {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        assert!(stdout.contains("Searching for 'body'"));
-        assert!(stdout.contains("Recursive search: true"));
+        assert!(stdout.contains("File:"));
+        assert_eq!(output.status.code(), Some(0));
     }
 
     #[test]
@@ -209,5 +213,16 @@ mod tests {
 
         assert!(output.status.success());
         assert!(stderr.contains("Usage: minigrep [OPTIONS] <query> <filename>"));
+    }
+
+    #[test]
+    fn test_cli_no_match_exit_code() {
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "zzzz_missing_pattern", "poem.txt"])
+            .output()
+            .expect("Failed to execute command");
+
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stdout).is_empty());
     }
 }

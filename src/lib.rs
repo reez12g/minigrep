@@ -38,7 +38,7 @@ impl From<regex::Error> for Error {
 ///
 /// # Returns
 ///
-/// * `Result<(), Error>` - Ok if successful, Err otherwise with a specific error type
+/// * `Result<usize, Error>` - Number of matching lines, or an error
 ///
 /// # Errors
 ///
@@ -46,20 +46,14 @@ impl From<regex::Error> for Error {
 /// - The file cannot be read
 /// - The regex pattern is invalid (when using regex search)
 /// - Any other I/O operation fails
-pub fn run(config: Config) -> Result<(), Error> {
+pub fn run(config: Config) -> Result<usize, Error> {
     if config.recursive {
-        // Recursive search through directory
-        println!("Searching recursively for '{}' in '{}'", config.query, config.filename);
-
         // Find all text files in the directory
         let files = file::find_text_files(&config.filename)?;
 
         if files.is_empty() {
-            println!("No text files found in '{}'", config.filename);
-            return Ok(());
+            return Ok(0);
         }
-
-        println!("Searching in {} file(s)...", files.len());
 
         // Search in all files
         let results = file::search_files(
@@ -70,43 +64,21 @@ pub fn run(config: Config) -> Result<(), Error> {
             config.context_lines,
         )?;
 
-        // Print the results
-        if results.is_empty() {
-            println!("No matches found for '{}'", config.query);
-        } else {
-            let match_count = results.iter().filter(|m| m.is_match).count();
-            println!("Found {} match(es) in {} file(s):", match_count, files.len());
+        let match_count = results.iter().filter(|m| m.is_match).count();
+        if match_count == 0 {
+            return Ok(0);
+        }
 
-            // Group results by file
-            let mut current_file = None;
-            let mut current_group = Vec::new();
-            let mut last_line_num = 0;
+        // Group results by file
+        let mut current_file = None;
+        let mut current_group = Vec::new();
+        let mut last_line_num = 0;
 
-            for file_match in &results {
-                // If we're starting a new file
-                if current_file.as_ref().map_or(true, |p| p != &file_match.path) {
-                    // Print the previous file's results
-                    if !current_group.is_empty() {
-                        for (num, text, matched) in &current_group {
-                            if *matched {
-                                println!("{}:{}", num, text);
-                            } else {
-                                println!("{}~{}", num, text);
-                            }
-                        }
-                        println!("--");
-                        current_group.clear();
-                    }
-
-                    // Start a new file
-                    current_file = Some(file_match.path.clone());
-                    println!("\nFile: {}", file_match.path.display());
-                    last_line_num = 0;
-                }
-
-                // Add separator between non-continuous line groups within the same file
-                if !current_group.is_empty() && file_match.line_num > last_line_num + 1 {
-                    // Print the current group
+        for file_match in &results {
+            // If we're starting a new file
+            if current_file.as_ref().map_or(true, |p| p != &file_match.path) {
+                // Print the previous file's results
+                if !current_group.is_empty() {
                     for (num, text, matched) in &current_group {
                         if *matched {
                             println!("{}:{}", num, text);
@@ -118,12 +90,15 @@ pub fn run(config: Config) -> Result<(), Error> {
                     current_group.clear();
                 }
 
-                current_group.push((file_match.line_num, &file_match.line, file_match.is_match));
-                last_line_num = file_match.line_num;
+                // Start a new file
+                current_file = Some(file_match.path.clone());
+                println!("File: {}", file_match.path.display());
+                last_line_num = 0;
             }
 
-            // Print the last group
-            if !current_group.is_empty() {
+            // Add separator between non-continuous line groups within the same file
+            if !current_group.is_empty() && file_match.line_num > last_line_num + 1 {
+                // Print the current group
                 for (num, text, matched) in &current_group {
                     if *matched {
                         println!("{}:{}", num, text);
@@ -131,104 +106,112 @@ pub fn run(config: Config) -> Result<(), Error> {
                         println!("{}~{}", num, text);
                     }
                 }
+                println!("--");
+                current_group.clear();
             }
+
+            current_group.push((file_match.line_num, &file_match.line, file_match.is_match));
+            last_line_num = file_match.line_num;
         }
-    } else {
-        // Regular search in a single file
-        println!("Searching for '{}' in '{}'", config.query, config.filename);
 
-        // Read the file contents
-        let contents = file::read_file(&config.filename)?;
-
-        // Perform the search
-        if config.context_lines > 0 {
-            // Use search with context lines
-            let results = if config.use_regex {
-                // Use regex-based search
-                if config.case_sensitive {
-                    search::search_regex_with_context_lines(&config.query, &contents, config.context_lines)?
+        // Print the last group
+        if !current_group.is_empty() {
+            for (num, text, matched) in &current_group {
+                if *matched {
+                    println!("{}:{}", num, text);
                 } else {
-                    search::search_regex_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)?
-                }
-            } else {
-                // Use simple string search
-                if config.case_sensitive {
-                    search::search_with_context_lines(&config.query, &contents, config.context_lines)
-                } else {
-                    search::search_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)
-                }
-            };
-
-            // Print the results
-            if results.is_empty() {
-                println!("No matches found for '{}'", config.query);
-            } else {
-                let match_count = results.iter().filter(|&(_, _, is_match)| *is_match).count();
-                println!("Found {} match(es):", match_count);
-
-                let mut current_group = Vec::new();
-                let mut last_line_num = 0;
-
-                // Group continuous lines together and separate non-continuous groups
-                for (line_num, line, is_match) in results {
-                    // Add separator between non-continuous line groups
-                    if !current_group.is_empty() && line_num > last_line_num + 1 {
-                        // Print the current group
-                        for (num, text, matched) in &current_group {
-                            if *matched {
-                                println!("{}:{}", num, text);
-                            } else {
-                                println!("{}~{}", num, text);
-                            }
-                        }
-                        println!("--");
-                        current_group.clear();
-                    }
-
-                    current_group.push((line_num, line, is_match));
-                    last_line_num = line_num;
-                }
-
-                // Print the last group
-                for (num, text, matched) in &current_group {
-                    if *matched {
-                        println!("{}:{}", num, text);
-                    } else {
-                        println!("{}~{}", num, text);
-                    }
-                }
-            }
-        } else {
-            // Use regular search without context
-            let results = if config.use_regex {
-                // Use regex-based search
-                if config.case_sensitive {
-                    search::search_regex(&config.query, &contents)?
-                } else {
-                    search::search_regex_case_insensitive(&config.query, &contents)?
-                }
-            } else {
-                // Use simple string search
-                if config.case_sensitive {
-                    search::search(&config.query, &contents)
-                } else {
-                    search::search_case_insensitive(&config.query, &contents)
-                }
-            };
-
-            // Print the results
-            if results.is_empty() {
-                println!("No matches found for '{}'", config.query);
-            } else {
-                println!("Found {} match(es):", results.len());
-                for (line_num, line) in results {
-                    println!("{}:{}", line_num, line);
+                    println!("{}~{}", num, text);
                 }
             }
         }
+
+        return Ok(match_count);
     }
 
-    Ok(())
+    // Read the file contents
+    let contents = file::read_file(&config.filename)?;
+
+    // Perform the search
+    if config.context_lines > 0 {
+        // Use search with context lines
+        let results = if config.use_regex {
+            // Use regex-based search
+            if config.case_sensitive {
+                search::search_regex_with_context_lines(&config.query, &contents, config.context_lines)?
+            } else {
+                search::search_regex_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)?
+            }
+        } else {
+            // Use simple string search
+            if config.case_sensitive {
+                search::search_with_context_lines(&config.query, &contents, config.context_lines)
+            } else {
+                search::search_case_insensitive_with_context_lines(&config.query, &contents, config.context_lines)
+            }
+        };
+
+        let match_count = results.iter().filter(|&(_, _, is_match)| *is_match).count();
+        if match_count == 0 {
+            return Ok(0);
+        }
+
+        let mut current_group = Vec::new();
+        let mut last_line_num = 0;
+
+        // Group continuous lines together and separate non-continuous groups
+        for (line_num, line, is_match) in results {
+            // Add separator between non-continuous line groups
+            if !current_group.is_empty() && line_num > last_line_num + 1 {
+                // Print the current group
+                for (num, text, matched) in &current_group {
+                    if *matched {
+                        println!("{}:{}", num, text);
+                    } else {
+                        println!("{}~{}", num, text);
+                    }
+                }
+                println!("--");
+                current_group.clear();
+            }
+
+            current_group.push((line_num, line, is_match));
+            last_line_num = line_num;
+        }
+
+        // Print the last group
+        for (num, text, matched) in &current_group {
+            if *matched {
+                println!("{}:{}", num, text);
+            } else {
+                println!("{}~{}", num, text);
+            }
+        }
+
+        return Ok(match_count);
+    }
+
+    // Use regular search without context
+    let results = if config.use_regex {
+        // Use regex-based search
+        if config.case_sensitive {
+            search::search_regex(&config.query, &contents)?
+        } else {
+            search::search_regex_case_insensitive(&config.query, &contents)?
+        }
+    } else {
+        // Use simple string search
+        if config.case_sensitive {
+            search::search(&config.query, &contents)
+        } else {
+            search::search_case_insensitive(&config.query, &contents)
+        }
+    };
+
+    let match_count = results.len();
+    for (line_num, line) in results {
+        println!("{}:{}", line_num, line);
+    }
+    Ok(match_count)
 }
 
 #[cfg(test)]
@@ -261,6 +244,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
     }
 
     #[test]
@@ -288,6 +272,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2);
     }
 
     #[test]
@@ -315,6 +300,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 
     #[test]
@@ -341,6 +327,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 
     #[test]
@@ -368,6 +355,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3);
     }
 
     #[test]
@@ -413,6 +401,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2);
     }
 
     #[test]
@@ -440,6 +429,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
     }
 
     #[test]
@@ -467,6 +457,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 4);
     }
 
     #[test]
@@ -521,6 +512,7 @@ mod tests {
         cleanup_test_file(filename).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
     }
 
     #[test]
@@ -556,5 +548,6 @@ mod tests {
         std::fs::remove_dir_all(dir_name).unwrap();
 
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2);
     }
 }
