@@ -85,6 +85,7 @@ fn run() -> Result<CliOutcome, Error> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::process::Command;
 
     #[test]
@@ -224,5 +225,21 @@ mod tests {
 
         assert_eq!(output.status.code(), Some(1));
         assert!(String::from_utf8_lossy(&output.stdout).is_empty());
+    }
+
+    #[test]
+    fn test_cli_search_invalid_utf8_file() {
+        let filename = "test_cli_invalid_utf8.bin";
+        fs::write(filename, vec![0xff, 0xfe, b'a', b'b', b'c', b'\n']).unwrap();
+
+        let output = Command::new("cargo")
+            .args(&["run", "--quiet", "--", "abc", filename])
+            .output()
+            .expect("Failed to execute command");
+
+        fs::remove_file(filename).unwrap();
+
+        assert_eq!(output.status.code(), Some(0));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1:"));
     }
 }

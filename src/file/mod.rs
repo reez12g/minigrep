@@ -51,7 +51,8 @@ pub struct FileMatch {
 /// This function will return an error if:
 /// - The file does not exist (`FileError::NotFound`)
 /// - The file cannot be read due to permissions or other IO errors (`FileError::IoError`)
-/// - The file contains invalid UTF-8 (`FileError::ReadError`)
+///
+/// Invalid UTF-8 bytes are converted lossily to valid UTF-8, so searching can continue.
 ///
 /// # Examples
 ///
@@ -75,21 +76,16 @@ pub struct FileMatch {
 /// std::fs::remove_file(filename).unwrap();
 /// ```
 pub fn read_file(filename: &str) -> Result<String, FileError> {
-    // Open the file, handling the "not found" case specifically
-    let mut file = match File::open(filename) {
-        Ok(file) => file,
+    // Read file bytes, handling the "not found" case specifically.
+    let bytes = match fs::read(filename) {
+        Ok(bytes) => bytes,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             return Err(FileError::NotFound(filename.to_string()));
         }
         Err(e) => return Err(FileError::IoError(e)),
     };
 
-    // Read the file contents
-    let mut contents = String::new();
-    match file.read_to_string(&mut contents) {
-        Ok(_) => Ok(contents),
-        Err(e) => Err(FileError::ReadError(e.to_string())),
-    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Checks if a path is a file and has a valid UTF-8 text content
@@ -395,6 +391,23 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), content);
+    }
+
+    #[test]
+    fn test_read_file_with_invalid_utf8_bytes() {
+        let filename = "test_read_file_invalid_utf8.bin";
+        let bytes = vec![b'f', b'o', 0x80, b'o'];
+
+        fs::write(filename, bytes).unwrap();
+
+        let result = read_file(filename);
+
+        cleanup_test_file(filename).unwrap();
+
+        assert!(result.is_ok());
+        let contents = result.unwrap();
+        assert!(contents.starts_with("fo"));
+        assert!(contents.ends_with('o'));
     }
 
     #[test]
