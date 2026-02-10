@@ -1,5 +1,6 @@
 use std::fs::{self, File};
 use std::io::{self, prelude::*};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -123,6 +124,50 @@ fn is_text_file(path: &Path) -> bool {
     false
 }
 
+/// Directory names to skip during recursive search to avoid scanning build/VCS metadata.
+const DEFAULT_IGNORED_DIRS: [&str; 3] = [".git", "target", "node_modules"];
+
+fn should_skip_directory(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| DEFAULT_IGNORED_DIRS.contains(&name))
+        .unwrap_or(false)
+}
+
+fn collect_text_files(
+    dir: &Path,
+    visited: &mut HashSet<PathBuf>,
+    result: &mut Vec<PathBuf>,
+) -> Result<(), FileError> {
+    let canonical = fs::canonicalize(dir)?;
+    if !visited.insert(canonical) {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let metadata = fs::symlink_metadata(&entry_path)?;
+        let file_type = metadata.file_type();
+
+        // Never recurse into symlinks to avoid directory cycles.
+        if file_type.is_symlink() {
+            continue;
+        }
+
+        if file_type.is_dir() {
+            if should_skip_directory(&entry_path) {
+                continue;
+            }
+            collect_text_files(&entry_path, visited, result)?;
+        } else if file_type.is_file() && is_text_file(&entry_path) {
+            result.push(entry_path);
+        }
+    }
+
+    Ok(())
+}
+
 /// Recursively finds all text files in a directory
 ///
 /// # Arguments
@@ -139,11 +184,12 @@ fn is_text_file(path: &Path) -> bool {
 /// - The directory does not exist (`FileError::NotFound`)
 /// - The path is not a directory (`FileError::NotADirectory`)
 /// - There is an IO error while reading the directory (`FileError::IoError`)
-pub fn find_text_files(dir_path: &str) -> Result<Vec<PathBuf>, FileError> {
-    let path = Path::new(dir_path);
+pub fn find_text_files<P: AsRef<Path>>(dir_path: P) -> Result<Vec<PathBuf>, FileError> {
+    let path = dir_path.as_ref();
+    let path_display = path.to_string_lossy();
 
     if !path.exists() {
-        return Err(FileError::NotFound(dir_path.to_string()));
+        return Err(FileError::NotFound(path_display.to_string()));
     }
 
     if !path.is_dir() {
@@ -151,27 +197,13 @@ pub fn find_text_files(dir_path: &str) -> Result<Vec<PathBuf>, FileError> {
             // If it's a single file, return it as a vector with one element
             return Ok(vec![path.to_path_buf()]);
         } else {
-            return Err(FileError::NotADirectory(dir_path.to_string()));
+            return Err(FileError::NotADirectory(path_display.to_string()));
         }
     }
 
+    let mut visited = HashSet::new();
     let mut result = Vec::new();
-
-    // Read the directory entries
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let entry_path = entry.path();
-
-        if entry_path.is_dir() {
-            // Recursively search subdirectories
-            if let Ok(mut files) = find_text_files(entry_path.to_str().unwrap_or("")) {
-                result.append(&mut files);
-            }
-        } else if is_text_file(&entry_path) {
-            // Add text files to the result
-            result.push(entry_path);
-        }
-    }
+    collect_text_files(path, &mut visited, &mut result)?;
 
     Ok(result)
 }
